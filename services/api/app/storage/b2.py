@@ -17,9 +17,12 @@ def backend() -> S3StorageBackend:
     return S3StorageBackend.for_backblaze(settings.b2_bucket_name)
 
 
+@lru_cache(maxsize=8)
 def sink(prefix: str | None = None) -> ObjectStorageSink:
-    # Built per call. HIERARCHICAL keys give runs/{date}/{run_id}/assets/{asset_id}.ext,
-    # the layout the spike confirmed in the bucket.
+    # Cached/reused across requests. The spike built ONE sink and reused it for all 3 runs;
+    # rebuilding it per request re-pays any first-use B2 cost (manifest/index setup), which
+    # grows with bucket contents - the prime suspect for the per-request slowdown. HIERARCHICAL
+    # keys give runs/{date}/{run_id}/assets/{asset_id}.ext, the layout the spike confirmed.
     return ObjectStorageSink(
         backend(),
         prefix=prefix or settings.asset_prefix,

@@ -6,9 +6,16 @@ evaluate-retry loop, provenance, and resumable jobs arrive in later phases.
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI
 
 from app.config import settings
+
+# Dev diagnostic: surface Genblaze's own phase logging so the generation-vs-upload split
+# shows in the server console. Drop to WARNING once the timing is understood.
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("genblaze").setLevel(logging.INFO)
 from app.models import GenerateRequest, GenerateResponse
 from app.pipeline.visuals import generate_image
 
