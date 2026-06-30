@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+python-dotenv
+genblaze-core
+genblaze-google
+genblaze-s3
