@@ -1,8 +1,10 @@
-"""Ghostreel API - Phase 0 scaffold.
+"""Ghostreel API.
 
-Proves the seam end to end: HTTP request -> Genblaze image generation -> Backblaze B2.
-The full async job pipeline (script -> segments -> visuals -> voice -> assemble), the
-evaluate-retry loop, provenance, and resumable jobs arrive in later phases.
+Phase 0: POST /generate  - single image -> B2 (the seam).
+Phase 1: POST /video     - topic -> script -> style-locked images + voice -> assembled MP4.
+
+The async job runner, evaluate-retry loop, provenance, and resumable jobs arrive in
+later phases.
 """
 from __future__ import annotations
 
@@ -11,15 +13,15 @@ import logging
 from fastapi import FastAPI
 
 from app.config import settings
-
-# Dev diagnostic: surface Genblaze's own phase logging so the generation-vs-upload split
-# shows in the server console. Drop to WARNING once the timing is understood.
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("genblaze").setLevel(logging.INFO)
-from app.models import GenerateRequest, GenerateResponse
+from app.models import GenerateRequest, GenerateResponse, VideoRequest, VideoResponse
+from app.pipeline.video import create_video
 from app.pipeline.visuals import generate_image
 
-app = FastAPI(title="Ghostreel API", version="0.0.0")
+# Dev diagnostic: surface Genblaze's own phase logging. Drop to WARNING before the demo.
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("genblaze").setLevel(logging.INFO)
+
+app = FastAPI(title="Ghostreel API", version="0.1.0")
 
 
 @app.get("/health")
@@ -35,9 +37,15 @@ def health() -> dict:
 
 @app.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest) -> GenerateResponse:
-    """Phase 0 seam: synchronous single-image generation to B2.
-
-    Intentionally synchronous - one image is ~55s end to end. Phase 1+ replaces this with
-    POST /jobs that enqueues an async job handled by jobs/runner.py.
-    """
+    """Phase 0 seam: synchronous single-image generation to B2."""
     return GenerateResponse(**generate_image(req.prompt))
+
+
+@app.post("/video", response_model=VideoResponse)
+def video(req: VideoRequest) -> VideoResponse:
+    """Phase 1: topic -> finished MP4 in B2.
+
+    Synchronous (a full video is a multi-minute job). Phase 3 moves this behind the async
+    job runner with progress/cancel/resume.
+    """
+    return create_video(req.topic)

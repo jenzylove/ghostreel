@@ -2,6 +2,8 @@ fastapi
 uvicorn[standard]
 pydantic-settings
 python-dotenv
+httpx
 genblaze-core
 genblaze-google
+genblaze-elevenlabs
 genblaze-s3
