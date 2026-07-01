@@ -4,9 +4,10 @@ Direct ffmpeg subprocess (the sample confirms genblaze has no composition primit
 Timing rule: each segment's on-screen duration is the measured length of ITS narration
 audio, so visuals stay synced to the voice (audio drives timing).
 
-FIRST-RUN CHECK: confirm backend().put(key, bytes, content_type=...) and
-backend().get_durable_url(key) exist (pattern from the sample's composer). The ffmpeg half
-is independent of that.
+Asset fetch: the Asset.url is durable but credential-free, and our bucket is private, so an
+anonymous GET 401s. Per the Asset model's own guidance ("parse the key from this URL if the
+sink backend is known"), we derive the object key and pull bytes through the authenticated
+backend().get(key) - no second client, no presigning.
 """
 from __future__ import annotations
 
@@ -14,8 +15,7 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
-
-import httpx
+from urllib.parse import unquote, urlparse
 
 from app.config import settings
 from app.models import Script
@@ -25,12 +25,19 @@ WIDTH, HEIGHT, FPS = 1280, 720, 30
 _FF = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
 
 
-def _download(url: str, dest: Path) -> None:
-    with httpx.stream("GET", url, follow_redirects=True, timeout=120) as r:
-        r.raise_for_status()
-        with open(dest, "wb") as fh:
-            for chunk in r.iter_bytes():
-                fh.write(chunk)
+def _key_from_url(url: str) -> str:
+    """Recover the B2 object key from a durable Asset URL across the common URL shapes."""
+    path = unquote(urlparse(url).path).lstrip("/")
+    bucket = settings.b2_bucket_name
+    if path.startswith(f"file/{bucket}/"):        # B2 "friendly" URL: /file/{bucket}/{key}
+        return path[len(f"file/{bucket}/"):]
+    if path.startswith(f"{bucket}/"):             # path-style: /{bucket}/{key}
+        return path[len(bucket) + 1:]
+    return path                                   # virtual-hosted: /{key}
+
+
+def _fetch(url: str, dest: Path) -> None:
+    dest.write_bytes(backend().get(_key_from_url(url)))
 
 
 def _audio_duration(path: Path) -> float:
@@ -47,15 +54,15 @@ def assemble_video(script: Script) -> str | None:
     clips: list[Path] = []
     audios: list[Path] = []
 
-    # 1. Download each segment's image + audio; measure audio -> per-segment duration;
+    # 1. Fetch each segment's image + audio; measure audio -> per-segment duration;
     #    render the still into a silent clip of exactly that length.
     for seg in script.segments:
         if not seg.image_url or not seg.audio_url:
             continue
         img = work / f"img_{seg.index}.png"
         aud = work / f"aud_{seg.index}.mp3"
-        _download(seg.image_url, img)
-        _download(seg.audio_url, aud)
+        _fetch(seg.image_url, img)
+        _fetch(seg.audio_url, aud)
         dur = _audio_duration(aud)
         seg.duration_s = dur
 
@@ -101,8 +108,7 @@ def assemble_video(script: Script) -> str | None:
 
     # 5. Upload to B2 and return a durable URL.
     key = f"{settings.asset_prefix}/videos/{uuid.uuid4().hex}.mp4"
-    data = final.read_bytes()
-    backend().put(key, data, content_type="video/mp4")
+    backend().put(key, final.read_bytes(), content_type="video/mp4")
     try:
         return backend().get_durable_url(key)
     except Exception:
