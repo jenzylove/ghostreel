@@ -109,7 +109,10 @@ def assemble_video(script: Script) -> str | None:
     # 5. Upload to B2 and return a durable URL.
     key = f"{settings.asset_prefix}/videos/{uuid.uuid4().hex}.mp4"
     backend().put(key, final.read_bytes(), content_type="video/mp4")
+    # Presigned so the finished video is directly viewable/downloadable despite the private
+    # bucket. 7-day expiry (S3 sig-v4 max). Phase 3 will store the key and presign on demand
+    # rather than baking an expiry into the persisted record.
     try:
-        return backend().get_durable_url(key)
+        return backend().presigned_get_url(key, expires_in=604800)
     except Exception:
         return key
