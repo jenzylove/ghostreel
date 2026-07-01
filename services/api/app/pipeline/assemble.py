@@ -52,10 +52,11 @@ def _audio_duration(path: Path) -> float:
 def assemble_video(script: Script) -> str | None:
     work = Path(tempfile.mkdtemp(prefix="ghostreel_"))
     clips: list[Path] = []
-    audios: list[Path] = []
 
-    # 1. Fetch each segment's image + audio; measure audio -> per-segment duration;
-    #    render the still into a silent clip of exactly that length.
+    # 1. Build each segment as a SELF-CONTAINED clip: its image + its own narration, with
+    #    -shortest so the clip length is exactly the audio length. Binding audio to its own
+    #    image per segment means any frame-rounding stays inside the segment and cannot
+    #    accumulate across joins (the a/v-drift bug from separate video+audio concat).
     for seg in script.segments:
         if not seg.image_url or not seg.audio_url:
             continue
@@ -63,50 +64,32 @@ def assemble_video(script: Script) -> str | None:
         aud = work / f"aud_{seg.index}.mp3"
         _fetch(seg.image_url, img)
         _fetch(seg.audio_url, aud)
-        dur = _audio_duration(aud)
-        seg.duration_s = dur
+        seg.duration_s = _audio_duration(aud)  # recorded for metadata/provenance
 
         clip = work / f"clip_{seg.index}.mp4"
         subprocess.run(
-            [*_FF, "-loop", "1", "-t", f"{dur:.3f}", "-i", str(img),
+            [*_FF, "-loop", "1", "-i", str(img), "-i", str(aud),
              "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,"
                     f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS}",
-             "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(clip)],
+             "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+             "-c:a", "aac", "-shortest", str(clip)],
             check=True, timeout=300, capture_output=True,
         )
         clips.append(clip)
-        audios.append(aud)
 
     if not clips:
         return None
 
-    # 2. Concat the silent clips (durations already match their audio).
+    # 2. Concat the self-contained clips (identical encode params -> stream copy is safe).
     clip_list = work / "clips.txt"
     clip_list.write_text("".join(f"file '{c.as_posix()}'\n" for c in clips))
-    silent = work / "silent.mp4"
-    subprocess.run(
-        [*_FF, "-f", "concat", "-safe", "0", "-i", str(clip_list), "-c", "copy", str(silent)],
-        check=True, timeout=300, capture_output=True,
-    )
-
-    # 3. Concat the narration (re-encode to aac so mixed source formats concat cleanly).
-    audio_list = work / "audio.txt"
-    audio_list.write_text("".join(f"file '{a.as_posix()}'\n" for a in audios))
-    voice = work / "voice.m4a"
-    subprocess.run(
-        [*_FF, "-f", "concat", "-safe", "0", "-i", str(audio_list), "-c:a", "aac", str(voice)],
-        check=True, timeout=300, capture_output=True,
-    )
-
-    # 4. Mux video + narration.
     final = work / "final.mp4"
     subprocess.run(
-        [*_FF, "-i", str(silent), "-i", str(voice),
-         "-c:v", "copy", "-c:a", "copy", "-shortest", str(final)],
+        [*_FF, "-f", "concat", "-safe", "0", "-i", str(clip_list), "-c", "copy", str(final)],
         check=True, timeout=300, capture_output=True,
     )
 
-    # 5. Upload to B2 and return a durable URL.
+    # 3. Upload to B2 and return a viewable URL.
     key = f"{settings.asset_prefix}/videos/{uuid.uuid4().hex}.mp4"
     backend().put(key, final.read_bytes(), content_type="video/mp4")
     # Presigned so the finished video is directly viewable/downloadable despite the private
