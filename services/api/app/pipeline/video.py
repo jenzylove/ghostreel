@@ -1,8 +1,7 @@
-"""Phase 1 orchestrator: topic -> script -> style-locked images + voice -> assembled MP4.
+"""Phase 1/2 orchestrator: topic -> script -> style-locked + QA'd images + voice -> MP4.
 
-Synchronous and sequential on purpose — this proves the whole pipe end to end. Phase 2 wraps
-each image gen in an evaluate-retry loop; Phase 3 moves this behind the async job runner and
-fans the per-segment generation out concurrently.
+Synchronous and sequential — proves the whole pipe with the evaluate-retry loop wired in.
+Phase 3 moves this behind the async job runner and fans per-segment generation out.
 """
 from __future__ import annotations
 
@@ -12,7 +11,7 @@ from app.models import VideoResponse
 from app.pipeline.assemble import assemble_video
 from app.pipeline.script import generate_script
 from app.pipeline.style import DEFAULT_STYLE
-from app.pipeline.visuals import generate_image
+from app.pipeline.visuals import generate_and_qa
 from app.pipeline.voice import generate_voice
 
 
@@ -23,14 +22,16 @@ def create_video(topic: str) -> VideoResponse:
     preset = DEFAULT_STYLE
 
     for seg in script.segments:
-        styled_prompt = preset.apply(seg.visual)      # style-lock applied per segment
-        seg.image_url = generate_image(styled_prompt)["asset_url"]
+        styled_prompt = preset.apply(seg.visual)             # style-lock per segment
+        seg.image_url, seg.attempts = generate_and_qa(styled_prompt, seg, preset)  # QA + retry
         seg.audio_url = generate_voice(seg.narration)
 
+    retries = sum(max(0, len(s.attempts) - 1) for s in script.segments)  # self-healing count
     video_url = assemble_video(script)
 
     return VideoResponse(
         video_url=video_url,
         segments=len(script.segments),
+        retries=retries,
         took_s=round(time.time() - t0, 1),
     )

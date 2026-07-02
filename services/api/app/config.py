@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
     asset_prefix: str = "ghostreel"
 
+    # Phase 2 evaluate-retry
+    qa_enabled: bool = True
+    qa_model: str = "gemini-2.5-flash"     # vision-capable Gemini for the semantic judge
+    qa_max_attempts: int = 2               # 1 retry; bounds cost (each attempt = 1 image gen)
+
     def missing_keys(self) -> list[str]:
         required = {
             "GEMINI_API_KEY": self.gemini_api_key,

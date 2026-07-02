@@ -29,6 +29,23 @@ class StylePreset(BaseModel):
         return prompt
 
 
+# --- Phase 2 evaluate-retry ---
+class Verdict(BaseModel):
+    passed: bool
+    score: float
+    reason: str
+
+
+class QaAttempt(BaseModel):
+    """One generate+evaluate cycle for a segment image (the self-healing audit trail)."""
+
+    attempt: int
+    url: str | None
+    passed: bool
+    score: float
+    reason: str
+
+
 class Segment(BaseModel):
     index: int
     narration: str                    # spoken text — drives the voiceover AND the timing
@@ -36,6 +53,7 @@ class Segment(BaseModel):
     image_url: str | None = None
     audio_url: str | None = None
     duration_s: float | None = None   # measured from the generated audio (audio drives timing)
+    attempts: list[QaAttempt] = []    # every QA attempt for this segment's image
 
 
 class Script(BaseModel):
@@ -50,4 +68,5 @@ class VideoRequest(BaseModel):
 class VideoResponse(BaseModel):
     video_url: str | None
     segments: int
+    retries: int = 0                  # total auto-regenerations across all segments (self-healing count)
     took_s: float

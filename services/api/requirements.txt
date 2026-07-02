@@ -3,6 +3,8 @@ uvicorn[standard]
 pydantic-settings
 python-dotenv
 httpx
+pillow
+google-genai
 genblaze-core
 genblaze-google
 genblaze-elevenlabs
