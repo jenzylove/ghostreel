@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     b2_key_id: str = ""
     b2_app_key: str = ""
     b2_bucket_name: str = ""
+    b2_region: str = ""          # e.g. eu-central-003; when set, skips region auto-detection
     eleven_api_key: str = ""
 
     image_model: str = "imagen-4.0-generate-001"

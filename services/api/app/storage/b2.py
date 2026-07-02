@@ -12,10 +12,12 @@ from app.config import settings
 
 @lru_cache(maxsize=1)
 def backend() -> S3StorageBackend:
-    # Proven-spike path: credentials (B2_KEY_ID / B2_APP_KEY) read from env; pass only the
-    # bucket. Region auto-detected. Singleton so we reuse one client across requests
-    # (rebuilding it per request re-paid a growing manifest-index cost — the Phase 0 slowdown).
-    return S3StorageBackend.for_backblaze(settings.b2_bucket_name)
+    # Credentials (B2_KEY_ID / B2_APP_KEY) read from env; pass the bucket + region. Setting
+    # B2_REGION (e.g. eu-central-003) skips the 301 region-auto-detect round-trip — matters in
+    # a fresh Render container. Singleton so we reuse one client across requests (rebuilding it
+    # per request re-paid a growing manifest-index cost — the Phase 0 slowdown).
+    kwargs = {"region": settings.b2_region} if settings.b2_region else {}
+    return S3StorageBackend.for_backblaze(settings.b2_bucket_name, **kwargs)
 
 
 @lru_cache(maxsize=8)

@@ -1,0 +1,25 @@
+# Render blueprint for Ghostreel. Create the service via Render "New +" -> "Blueprint" and
+# point it at this repo, OR create a Web Service (Docker) manually with the same settings.
+services:
+  - type: web
+    name: ghostreel
+    runtime: docker
+    dockerfilePath: services/api/Dockerfile
+    dockerContext: services/api
+    plan: starter            # ffmpeg assembly needs real CPU/RAM; free tier will struggle
+    healthCheckPath: /health
+    envVars:
+      # Secrets — set the values in the Render dashboard (sync:false keeps them out of git).
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ELEVEN_API_KEY
+        sync: false
+      - key: B2_KEY_ID
+        sync: false
+      - key: B2_APP_KEY
+        sync: false
+      - key: B2_BUCKET_NAME
+        sync: false
+      # Non-secret config.
+      - key: B2_REGION
+        value: eu-central-003
