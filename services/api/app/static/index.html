@@ -63,6 +63,7 @@
       <span id="refStatus" class="badge" style="display:none"></span>
       <label>Voice <select id="voice"></select></label>
       <label>Segments <input type="number" id="segments" min="3" max="12" value="6" /></label>
+      <label><input type="checkbox" id="captions" checked /> Captions</label>
       <label><input type="checkbox" id="review" checked /> Review script before rendering</label>
       <label id="codeWrap" style="display:none">Access code <input type="password" id="code" style="width:120px" /></label>
     </div>
@@ -125,6 +126,7 @@
           style_id: $("style").value,
           voice_id: $("voice").value,
           segment_count: parseInt($("segments").value) || 6,
+          captions: $("captions").checked,
           review: $("review").checked
         };
         if ($("style").value === "custom" && window.customStyle) {

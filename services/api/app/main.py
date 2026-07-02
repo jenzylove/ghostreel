@@ -173,6 +173,7 @@ def create_job(req: VideoRequest, x_access_code: str | None = Header(default=Non
         style=style,
         segment_count=req.segment_count or settings.segment_count,
         voice_id=req.voice_id or settings.voice_id,
+        captions=req.captions,
         review=req.review,
         models={
             "script": settings.chat_model,

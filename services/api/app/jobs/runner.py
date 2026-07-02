@@ -77,7 +77,7 @@ def run_job(job_id: str) -> None:
         if not job.video_url:
             job.step = "assemble"
             store.save(job)
-            job.video_url = assemble_video(job.script)
+            job.video_url = assemble_video(job.script, captions=job.captions)
             store.save(job)
 
         job.retries = sum(max(0, len(s.attempts) - 1) for s in job.script.segments)

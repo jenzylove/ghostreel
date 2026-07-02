@@ -1,8 +1,9 @@
 FROM python:3.11-slim
 
-# ffmpeg + ffprobe are required by the assembly step (native binaries, not pip packages).
+# ffmpeg + ffprobe for assembly; fonts-dejavu-core so libass can render burned-in captions
+# (the slim image ships no fonts, so subtitles would otherwise be blank).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

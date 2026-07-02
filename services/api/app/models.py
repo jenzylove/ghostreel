@@ -95,6 +95,7 @@ class Job(BaseModel):
     style: StylePreset | None = None      # resolved preset (falls back to default if None)
     segment_count: int = 6
     voice_id: str = ""
+    captions: bool = True                 # burn segment-level captions into the final video
     review: bool = False                  # pause after script for human approval/edit
     approved: bool = False
     created_at: str = Field(default_factory=_now)
@@ -109,6 +110,7 @@ class VideoRequest(BaseModel):
     style_negatives: str | None = None
     segment_count: int | None = None
     voice_id: str | None = None
+    captions: bool = True
     review: bool = False
 
 
