@@ -1,10 +1,4 @@
-"""Voiceover generation: narration text -> audio asset in B2 (ElevenLabs via Genblaze).
-
-FIRST-RUN CHECK: confirm `from genblaze_elevenlabs import ElevenLabsTTSProvider`, that it
-accepts api_key=, and that voice_id/model are valid step kwargs (pattern taken from the
-genblaze object-storage doc). Bare-ish construction (no output_dir) stages to /tmp on Linux,
-matching our proven Imagen path.
-"""
+"""Voiceover generation: narration text -> audio asset in B2 (ElevenLabs via Genblaze)."""
 from __future__ import annotations
 
 from genblaze_core import Modality, Pipeline
@@ -14,7 +8,7 @@ from app.pipeline.providers import voice_provider
 from app.storage.b2 import sink
 
 
-def generate_voice(narration: str) -> str | None:
+def generate_voice(narration: str, voice_id: str | None = None) -> str | None:
     out = (
         Pipeline("ghostreel-voice")
         .step(
@@ -22,7 +16,7 @@ def generate_voice(narration: str) -> str | None:
             model=settings.tts_model,
             modality=Modality.AUDIO,
             prompt=narration,
-            voice_id=settings.voice_id,
+            voice_id=voice_id or settings.voice_id,
         )
         # timeout bounds a hung TTS call (we saw a 2m13s connection timeout); max_retries
         # lets Genblaze self-heal transient failures — voice's equivalent of the image QA loop.

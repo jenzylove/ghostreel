@@ -11,6 +11,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Populate os.environ from .env BEFORE the SDKs are imported/used.
 load_dotenv()
 
+# Selectable ElevenLabs voices (Phase 4 control). The default is the one proven in the spike;
+# the others are long-standing public ElevenLabs voice IDs.
+VOICES: dict[str, str] = {
+    "George (default)": "JBFqnCBsd6RMkjVDRZzb",
+    "Rachel": "21m00Tcm4TlvDq8ikWAM",
+    "Adam": "pNInz6obpgDQGcFmaJgB",
+    "Antoni": "ErXwobaYiN019PkySvjV",
+}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -26,11 +35,12 @@ class Settings(BaseSettings):
     tts_model: str = "eleven_v3"
     voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
     asset_prefix: str = "ghostreel"
+    segment_count: int = 6
 
     # Phase 2 evaluate-retry
     qa_enabled: bool = True
-    qa_model: str = "gemini-2.5-flash"     # vision-capable Gemini for the semantic judge
-    qa_max_attempts: int = 2               # 1 retry; bounds cost (each attempt = 1 image gen)
+    qa_model: str = "gemini-2.5-flash"
+    qa_max_attempts: int = 2
 
     def missing_keys(self) -> list[str]:
         required = {

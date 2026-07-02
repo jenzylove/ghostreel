@@ -2,13 +2,15 @@
 
 Each job's state is persisted to B2 after every step, and every step is skipped when its
 output already exists in the loaded state. So a crash/restart resumes from the last completed
-segment instead of restarting (and re-paying) — the "kill it, watch it resume" demo beat.
+segment instead of restarting. When review is on, the job pauses after the script for human
+approval/edit (Phase 4) — that state is NOT auto-resumed (it waits for a human).
 """
 from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
+from app.config import settings
 from app.jobs import store
 from app.models import JobStatus
 from app.pipeline.assemble import assemble_video
@@ -34,7 +36,8 @@ def _safe_run(job_id: str) -> None:
 
 def run_job(job_id: str) -> None:
     job = store.load(job_id)
-    preset = DEFAULT_STYLE
+    preset = job.style or DEFAULT_STYLE
+    voice_id = job.voice_id or settings.voice_id
     job.status = JobStatus.RUNNING
     job.error = None
     store.save(job)
@@ -44,13 +47,19 @@ def run_job(job_id: str) -> None:
         if job.script is None:
             job.step = "script"
             store.save(job)
-            job.script = generate_script(job.topic)
+            job.script = generate_script(job.topic, n=job.segment_count)
             store.save(job)
+
+        # 1b. Review gate: pause for human approval/edit before spending on images/voice.
+        if job.review and not job.approved:
+            job.status = JobStatus.AWAITING_REVIEW
+            job.step = "awaiting review"
+            store.save(job)
+            return
 
         total = len(job.script.segments)
 
-        # 2. Per segment: image (QA + retry) then voice. Persist after each so resume is cheap
-        #    — at worst we redo the single in-flight step, never the whole job.
+        # 2. Per segment: image (QA + retry) then voice. Persist after each so resume is cheap.
         for seg in job.script.segments:
             if not seg.image_url:
                 job.step = f"image {seg.index + 1}/{total}"
@@ -61,7 +70,7 @@ def run_job(job_id: str) -> None:
             if not seg.audio_url:
                 job.step = f"voice {seg.index + 1}/{total}"
                 store.save(job)
-                seg.audio_url = generate_voice(seg.narration)
+                seg.audio_url = generate_voice(seg.narration, voice_id=voice_id)
                 store.save(job)
 
         # 3. Assemble (skip if already done).
@@ -83,7 +92,10 @@ def run_job(job_id: str) -> None:
 
 
 def resume_pending() -> None:
-    """On startup, re-enqueue any job left PENDING/RUNNING (interrupted mid-flight)."""
+    """On startup, re-enqueue any job left PENDING/RUNNING (interrupted mid-flight).
+
+    AWAITING_REVIEW is intentionally excluded — it's waiting for a human, not a crash.
+    """
     try:
         pending = store.list_incomplete()
     except Exception:

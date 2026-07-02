@@ -1,10 +1,12 @@
 """Ghostreel API + UI.
 
-Phase 0: POST /generate       - single image -> B2 (the seam).
-Phase 3: POST /jobs           - enqueue an async video job, returns {job_id} instantly.
-         GET  /jobs/{job_id}   - status/progress + the full provenance manifest.
-Phase 4: GET  /                - the single-page UI (served same-origin, no CORS).
-         GET  /jobs/{id}/media - presigned, browser-viewable URLs for a job's assets.
+Phase 0: POST /generate            - single image -> B2 (the seam).
+Phase 3: POST /jobs                - enqueue an async video job, returns {job_id} instantly.
+         GET  /jobs/{job_id}        - status/progress + the full provenance manifest.
+Phase 4: GET  /                     - the single-page UI (served same-origin, no CORS).
+         GET  /jobs/{id}/media      - presigned, browser-viewable URLs for a job's assets.
+         POST /jobs/{id}/approve    - approve/edit the reviewed script, then render.
+         GET  /presets, /voices     - options for the UI controls.
 
 Jobs run in a background worker, persist state to B2 after every step, and resume on restart.
 """
@@ -18,9 +20,17 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
-from app.config import settings
+from app.config import VOICES, settings
 from app.jobs import runner, store
-from app.models import GenerateRequest, GenerateResponse, Job, VideoRequest
+from app.models import (
+    ApproveRequest,
+    GenerateRequest,
+    GenerateResponse,
+    Job,
+    JobStatus,
+    VideoRequest,
+)
+from app.pipeline.style import get_preset, list_presets
 from app.pipeline.visuals import generate_image
 from app.storage.b2 import backend, key_from_url
 
@@ -32,7 +42,6 @@ _STATIC = Path(__file__).parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Re-enqueue any job interrupted mid-flight by the last shutdown/crash.
     runner.resume_pending()
     yield
 
@@ -65,6 +74,16 @@ def health() -> dict:
     }
 
 
+@app.get("/presets")
+def presets() -> list[dict]:
+    return list_presets()
+
+
+@app.get("/voices")
+def voices() -> list[dict]:
+    return [{"name": name, "id": vid} for name, vid in VOICES.items()]
+
+
 @app.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest) -> GenerateResponse:
     """Phase 0 seam: synchronous single-image generation to B2."""
@@ -73,18 +92,49 @@ def generate(req: GenerateRequest) -> GenerateResponse:
 
 @app.post("/jobs")
 def create_job(req: VideoRequest) -> dict:
-    """Enqueue a video job and return immediately with its id (no long blocking request)."""
+    """Enqueue a video job with the chosen controls. Returns immediately with its id."""
     job = Job(
         job_id=uuid.uuid4().hex,
         topic=req.topic,
+        style_id=req.style_id or "doodle",
+        style=get_preset(req.style_id),
+        segment_count=req.segment_count or settings.segment_count,
+        voice_id=req.voice_id or settings.voice_id,
+        review=req.review,
         models={
             "script": settings.chat_model,
             "image": settings.image_model,
             "qa": settings.qa_model,
             "tts": settings.tts_model,
-            "voice_id": settings.voice_id,
+            "voice_id": req.voice_id or settings.voice_id,
         },
     )
+    store.save(job)
+    runner.submit(job.job_id)
+    return {"job_id": job.job_id, "status": job.status.value}
+
+
+@app.post("/jobs/{job_id}/approve")
+def approve_job(job_id: str, req: ApproveRequest) -> dict:
+    """Approve (optionally with edits) a script that's awaiting review, then start rendering."""
+    try:
+        job = store.load(job_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail=f"job not found: {job_id}") from e
+    if job.status != JobStatus.AWAITING_REVIEW or job.script is None:
+        raise HTTPException(status_code=409, detail=f"job {job_id} is not awaiting review")
+
+    if req.segments:
+        by_index = {s.index: s for s in job.script.segments}
+        for edit in req.segments:
+            seg = by_index.get(edit.index)
+            if seg:
+                seg.narration = edit.narration
+                seg.visual = edit.visual
+
+    job.approved = True
+    job.status = JobStatus.PENDING
+    job.step = "queued"
     store.save(job)
     runner.submit(job.job_id)
     return {"job_id": job.job_id, "status": job.status.value}
@@ -130,6 +180,7 @@ def job_media(job_id: str) -> dict:
         "retries": job.retries,
         "error": job.error,
         "models": job.models,
+        "style_id": job.style_id,
         "video": _view(job.video_url),
         "segments": segments,
     }

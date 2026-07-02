@@ -69,17 +69,17 @@ class Script(BaseModel):
     segments: list[Segment]
 
 
-# --- Phase 3 jobs ---
+# --- Phase 3/4 jobs ---
 class JobStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
+    AWAITING_REVIEW = "awaiting_review"   # script generated, paused for human approval/edit
     DONE = "done"
     FAILED = "failed"
 
 
 class Job(BaseModel):
-    """A video job. Persisted to B2 as JSON — the record doubles as the provenance manifest
-    (topic, full script with per-segment prompts + QA verdicts, models used, timestamps)."""
+    """A video job. Persisted to B2 as JSON — the record doubles as the provenance manifest."""
 
     job_id: str
     topic: str
@@ -87,9 +87,16 @@ class Job(BaseModel):
     step: str = "queued"
     script: Script | None = None
     video_url: str | None = None
-    retries: int = 0                          # total self-heals across segments
+    retries: int = 0
     error: str | None = None
-    models: dict[str, str] = {}               # provenance: which model powered each stage
+    models: dict[str, str] = {}
+    # Phase 4 controls:
+    style_id: str = "doodle"
+    style: StylePreset | None = None      # resolved preset (falls back to default if None)
+    segment_count: int = 6
+    voice_id: str = ""
+    review: bool = False                  # pause after script for human approval/edit
+    approved: bool = False
     created_at: str = Field(default_factory=_now)
     updated_at: str = Field(default_factory=_now)
 
@@ -97,6 +104,20 @@ class Job(BaseModel):
 # --- API bodies ---
 class VideoRequest(BaseModel):
     topic: str
+    style_id: str | None = None
+    segment_count: int | None = None
+    voice_id: str | None = None
+    review: bool = False
+
+
+class SegmentEdit(BaseModel):
+    index: int
+    narration: str
+    visual: str
+
+
+class ApproveRequest(BaseModel):
+    segments: list[SegmentEdit] | None = None   # optional edited script; omit to approve as-is
 
 
 class VideoResponse(BaseModel):

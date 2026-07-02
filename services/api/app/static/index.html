@@ -8,19 +8,22 @@
     :root { --bg:#0a0a0f; --card:#12121a; --line:rgba(255,255,255,.07); --violet:#8b5cf6; --muted:#8b8b9a; }
     * { box-sizing: border-box; }
     body { margin:0; background:var(--bg); color:#ececf1; font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-    .wrap { max-width:960px; margin:0 auto; padding:40px 20px 80px; }
-    h1 { font-size:26px; margin:0 0 4px; letter-spacing:-.02em; }
-    h1 span { color:var(--violet); }
-    .sub { color:var(--muted); margin:0 0 28px; font-size:14px; }
-    .bar { display:flex; gap:10px; margin-bottom:26px; }
-    input { flex:1; background:#0a0a0f; border:1px solid #2a2a38; border-radius:12px; padding:13px 16px; color:#fff; font-size:15px; outline:none; }
-    input:focus { border-color:var(--violet); }
+    .wrap { max-width:980px; margin:0 auto; padding:40px 20px 80px; }
+    h1 { font-size:26px; margin:0 0 4px; letter-spacing:-.02em; } h1 span { color:var(--violet); }
+    .sub { color:var(--muted); margin:0 0 24px; font-size:14px; }
+    .bar { display:flex; gap:10px; margin-bottom:14px; }
+    input[type=text] { flex:1; background:#0a0a0f; border:1px solid #2a2a38; border-radius:12px; padding:13px 16px; color:#fff; font-size:15px; outline:none; }
+    input[type=text]:focus { border-color:var(--violet); }
     button { background:var(--violet); border:none; color:#fff; font-weight:600; padding:13px 22px; border-radius:12px; cursor:pointer; font-size:15px; }
     button:disabled { opacity:.5; cursor:not-allowed; }
+    .controls { display:flex; gap:14px; flex-wrap:wrap; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin-bottom:22px; font-size:13px; }
+    .controls label { color:var(--muted); display:flex; align-items:center; gap:7px; }
+    select, input[type=number] { background:#0a0a0f; border:1px solid #2a2a38; border-radius:9px; padding:7px 10px; color:#fff; font-size:13px; outline:none; }
+    input[type=number]{ width:64px; }
     .status { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 18px; margin-bottom:22px; }
     .dot { width:9px; height:9px; border-radius:50%; background:var(--violet); animation:pulse 1.3s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-    .done .dot { background:#22c55e; animation:none; } .failed .dot { background:#ef4444; animation:none; }
+    .done .dot { background:#22c55e; animation:none; } .failed .dot { background:#ef4444; animation:none; } .review .dot { background:#f59e0b; animation:none; }
     .step { font-weight:600; text-transform:capitalize; }
     .badge { font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
     .badge.heal { color:#f59e0b; border-color:rgba(245,158,11,.4); }
@@ -30,13 +33,16 @@
     .seg .ph { width:100%; aspect-ratio:16/9; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; background:#0e0e16; }
     .seg .body { padding:12px 14px; }
     .seg .narr { font-size:13px; color:#d4d4dc; margin:0 0 8px; }
+    .seg textarea { width:100%; background:#0a0a0f; border:1px solid #2a2a38; border-radius:8px; color:#fff; font:13px/1.4 inherit; padding:8px; resize:vertical; }
+    .seg .vis { width:100%; margin-top:6px; background:#0a0a0f; border:1px solid #2a2a38; border-radius:8px; color:#b7b7c4; font-size:12px; padding:6px 8px; }
     .qa { font-size:11px; display:flex; align-items:center; gap:6px; color:var(--muted); }
     .qa .k { padding:2px 8px; border-radius:999px; font-weight:600; }
     .qa .pass { background:rgba(34,197,94,.15); color:#4ade80; } .qa .fail { background:rgba(239,68,68,.15); color:#f87171; }
     details { margin-top:8px; } summary { cursor:pointer; color:var(--muted); font-size:12px; }
     .prov { font-size:11px; color:var(--muted); white-space:pre-wrap; margin-top:6px; }
     video { width:100%; border-radius:14px; border:1px solid var(--line); margin-top:6px; }
-    .result { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:22px; }
+    .result, .reviewbar { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:22px; }
+    .reviewbar { display:flex; align-items:center; justify-content:space-between; gap:14px; border-color:rgba(245,158,11,.35); }
     a.dl { display:inline-block; margin-top:10px; color:var(--violet); font-weight:600; text-decoration:none; font-size:14px; }
     .models { font-size:11px; color:var(--muted); margin-top:8px; }
   </style>
@@ -44,11 +50,18 @@
 <body>
   <div class="wrap">
     <h1>Ghost<span>reel</span></h1>
-    <p class="sub">Type a topic. Get a finished faceless video — script, style-locked visuals, voiceover, all self-healing and provenance-tracked.</p>
+    <p class="sub">Type a topic. Get a finished faceless video — script, style-locked visuals, voiceover; self-healing and provenance-tracked.</p>
 
     <div class="bar">
-      <input id="topic" placeholder="e.g. why do cats purr" />
+      <input type="text" id="topic" placeholder="e.g. why do cats purr" />
       <button id="go">Generate</button>
+    </div>
+
+    <div class="controls">
+      <label>Style <select id="style"></select></label>
+      <label>Voice <select id="voice"></select></label>
+      <label>Segments <input type="number" id="segments" min="3" max="12" value="6" /></label>
+      <label><input type="checkbox" id="review" checked /> Review script before rendering</label>
     </div>
 
     <div id="statusRow" class="status" style="display:none">
@@ -56,6 +69,11 @@
       <span class="step" id="step">queued</span>
       <span class="badge" id="segCount"></span>
       <span class="badge heal" id="healBadge" style="display:none"></span>
+    </div>
+
+    <div id="reviewbar" class="reviewbar" style="display:none">
+      <span>Review & edit the script below, then render (images + voice cost money — this is your chance to fix it first).</span>
+      <button id="approve">Approve &amp; Render</button>
     </div>
 
     <div id="result" class="result" style="display:none">
@@ -69,45 +87,62 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    let timer = null;
+    let timer = null, currentJob = null, reviewing = false;
+
+    async function loadOptions() {
+      try {
+        const presets = await (await fetch("/presets")).json();
+        $("style").innerHTML = presets.map(p => `<option value="${p.id}">${p.id}</option>`).join("");
+        const voices = await (await fetch("/voices")).json();
+        $("voice").innerHTML = voices.map(v => `<option value="${v.id}">${v.name}</option>`).join("");
+      } catch {}
+    }
 
     async function start() {
       const topic = $("topic").value.trim();
       if (!topic) return;
-      $("go").disabled = true;
-      $("grid").innerHTML = "";
-      $("result").style.display = "none";
-      $("statusRow").style.display = "flex";
-      $("step").textContent = "queued";
+      $("go").disabled = true; reviewing = false;
+      $("grid").innerHTML = ""; $("result").style.display = "none"; $("reviewbar").style.display = "none";
+      $("statusRow").style.display = "flex"; $("step").textContent = "queued";
       try {
         const r = await fetch("/jobs", {
           method: "POST", headers: {"content-type":"application/json"},
-          body: JSON.stringify({ topic })
+          body: JSON.stringify({
+            topic,
+            style_id: $("style").value,
+            voice_id: $("voice").value,
+            segment_count: parseInt($("segments").value) || 6,
+            review: $("review").checked
+          })
         });
         const { job_id } = await r.json();
-        if (timer) clearInterval(timer);
-        timer = setInterval(() => poll(job_id), 3000);
-        poll(job_id);
-      } catch (e) {
-        $("step").textContent = "failed to start: " + e;
-        $("go").disabled = false;
-      }
+        currentJob = job_id;
+        watch(job_id);
+      } catch (e) { $("step").textContent = "failed to start: " + e; $("go").disabled = false; }
+    }
+
+    function watch(id) {
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => poll(id), 3000); poll(id);
     }
 
     async function poll(id) {
-      let d;
-      try { d = await (await fetch(`/jobs/${id}/media`)).json(); }
-      catch { return; }
-
-      const row = $("statusRow");
-      row.className = "status " + (d.status === "done" ? "done" : d.status === "failed" ? "failed" : "");
-      $("step").textContent = d.status === "done" ? "done" : d.status === "failed" ? ("failed — " + (d.error||"")) : ("working · " + d.step);
+      let d; try { d = await (await fetch(`/jobs/${id}/media`)).json(); } catch { return; }
+      currentJob = id;
+      const st = d.status;
+      $("statusRow").className = "status " + (st === "done" ? "done" : st === "failed" ? "failed" : st === "awaiting_review" ? "review" : "");
+      $("step").textContent = st === "done" ? "done"
+        : st === "failed" ? ("failed — " + (d.error||""))
+        : st === "awaiting_review" ? "awaiting your review"
+        : ("working · " + d.step);
       $("segCount").textContent = (d.segments?.length || 0) + " segments";
       if (d.retries > 0) { $("healBadge").style.display = ""; $("healBadge").textContent = "⟳ " + d.retries + " self-healed"; }
 
-      renderSegments(d.segments || []);
+      reviewing = (st === "awaiting_review");
+      $("reviewbar").style.display = reviewing ? "flex" : "none";
+      renderSegments(d.segments || [], reviewing);
 
-      if (d.status === "done" || d.status === "failed") {
+      if (st === "done" || st === "failed") {
         clearInterval(timer); timer = null; $("go").disabled = false;
         if (d.video) {
           $("result").style.display = "block";
@@ -117,39 +152,54 @@
       }
     }
 
-    function renderSegments(segs) {
+    function renderSegments(segs, editable) {
       $("grid").innerHTML = segs.map(s => {
-        const img = s.image
+        const media = editable ? "" : (s.image
           ? `<img src="${s.image}" alt="segment ${s.index}" />`
-          : `<div class="ph">${s.qa_passed === false ? "generating…" : "…"}</div>`;
-        const qa = s.qa_passed == null ? "" :
-          `<div class="qa"><span class="k ${s.qa_passed ? "pass":"fail"}">${s.qa_passed ? "QA pass":"QA fail"}</span>
-             ${s.attempts>1 ? `<span>· ${s.attempts} tries</span>`:""}</div>`;
-        return `<div class="seg">${img}
-          <div class="body">
-            <p class="narr">${escapeHtml(s.narration || "")}</p>
-            ${qa}
-            <details><summary>provenance</summary>
-              <div class="prov">prompt: ${escapeHtml(s.image_prompt || s.visual || "")}
-${s.qa_reason ? "\nqa: " + escapeHtml(s.qa_reason) : ""}</div>
-            </details>
-          </div></div>`;
+          : `<div class="ph">${s.qa_passed === false ? "generating…" : "…"}</div>`);
+        const body = editable
+          ? `<div class="body" data-idx="${s.index}">
+               <textarea rows="3" class="ed-narr">${escapeHtml(s.narration||"")}</textarea>
+               <input class="vis ed-vis" value="${escapeAttr(s.visual||"")}" placeholder="visual" />
+             </div>`
+          : `<div class="body">
+               <p class="narr">${escapeHtml(s.narration || "")}</p>
+               ${s.qa_passed == null ? "" : `<div class="qa"><span class="k ${s.qa_passed?"pass":"fail"}">${s.qa_passed?"QA pass":"QA fail"}</span>${s.attempts>1?`<span>· ${s.attempts} tries</span>`:""}</div>`}
+               <details><summary>provenance</summary><div class="prov">prompt: ${escapeHtml(s.image_prompt || s.visual || "")}${s.qa_reason ? "\nqa: " + escapeHtml(s.qa_reason) : ""}</div></details>
+             </div>`;
+        return `<div class="seg">${media}${body}</div>`;
       }).join("");
     }
 
+    async function approve() {
+      if (!currentJob) return;
+      $("approve").disabled = true;
+      const segments = [...document.querySelectorAll(".seg .body[data-idx]")].map(b => ({
+        index: parseInt(b.dataset.idx),
+        narration: b.querySelector(".ed-narr").value,
+        visual: b.querySelector(".ed-vis").value
+      }));
+      try {
+        await fetch(`/jobs/${currentJob}/approve`, {
+          method: "POST", headers: {"content-type":"application/json"},
+          body: JSON.stringify({ segments })
+        });
+        $("reviewbar").style.display = "none"; $("approve").disabled = false;
+        watch(currentJob);
+      } catch { $("approve").disabled = false; }
+    }
+
     function escapeHtml(t){ const d=document.createElement("div"); d.textContent=t; return d.innerHTML; }
+    function escapeAttr(t){ return escapeHtml(t).replace(/"/g,"&quot;"); }
 
     $("go").addEventListener("click", start);
     $("topic").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
+    $("approve").addEventListener("click", approve);
+    loadOptions();
 
     // View an existing job with no new spend: open  /?job=<id>
     const preload = new URLSearchParams(location.search).get("job");
-    if (preload) {
-      $("statusRow").style.display = "flex";
-      if (timer) clearInterval(timer);
-      timer = setInterval(() => poll(preload), 3000);
-      poll(preload);
-    }
+    if (preload) { $("statusRow").style.display = "flex"; currentJob = preload; watch(preload); }
   </script>
 </body>
 </html>
