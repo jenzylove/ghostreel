@@ -15,10 +15,11 @@ from __future__ import annotations
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import VOICES, settings
@@ -51,6 +52,30 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Ghostreel API", version="0.4.0", lifespan=lifespan)
 
 
+# --- rate gate ---------------------------------------------------------------------------
+_daily = {"date": None, "count": 0}
+
+
+def _require_code(code: str | None) -> None:
+    """Reject when a gate is configured and the X-Access-Code header is missing/wrong."""
+    if settings.access_code and code != settings.access_code:
+        raise HTTPException(status_code=401, detail="invalid or missing access code")
+
+
+def _gate_job(code: str | None) -> None:
+    """Access-code check + a hard per-day ceiling on jobs started (budget backstop)."""
+    _require_code(code)
+    today = date.today().isoformat()
+    if _daily["date"] != today:
+        _daily["date"], _daily["count"] = today, 0
+    if _daily["count"] >= settings.daily_job_limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"daily generation limit reached ({settings.daily_job_limit}); try again tomorrow",
+        )
+    _daily["count"] += 1
+
+
 def _view(url: str | None) -> str | None:
     """Turn a durable (private, non-fetchable) asset URL into a short-lived viewable one."""
     if not url:
@@ -73,6 +98,7 @@ def health() -> dict:
         "status": "ok" if not missing else "missing_env",
         "bucket": settings.b2_bucket_name or None,
         "missing_env": missing,
+        "gated": bool(settings.access_code),
     }
 
 
@@ -105,8 +131,11 @@ def voices() -> list[dict]:
 
 
 @app.post("/style/extract")
-async def style_extract(files: list[UploadFile] = File(...)) -> dict:
+async def style_extract(
+    files: list[UploadFile] = File(...), x_access_code: str | None = Header(default=None)
+) -> dict:
     """Extract a reusable style preset from uploaded reference image(s) via Gemini vision."""
+    _require_code(x_access_code)
     images = [await f.read() for f in files]
     if not images:
         raise HTTPException(status_code=400, detail="no images uploaded")
@@ -118,14 +147,17 @@ async def style_extract(files: list[UploadFile] = File(...)) -> dict:
 
 
 @app.post("/generate", response_model=GenerateResponse)
-def generate(req: GenerateRequest) -> GenerateResponse:
+def generate(req: GenerateRequest, x_access_code: str | None = Header(default=None)) -> GenerateResponse:
     """Phase 0 seam: synchronous single-image generation to B2."""
+    _require_code(x_access_code)
     return GenerateResponse(**generate_image(req.prompt))
 
 
 @app.post("/jobs")
-def create_job(req: VideoRequest) -> dict:
+def create_job(req: VideoRequest, x_access_code: str | None = Header(default=None)) -> dict:
     """Enqueue a video job with the chosen controls. Returns immediately with its id."""
+    _gate_job(x_access_code)
+
     # Custom style (extracted from a reference image) overrides the named preset.
     if req.style_positive:
         style = StylePreset(positive=req.style_positive, negatives=req.style_negatives or "")
@@ -156,8 +188,11 @@ def create_job(req: VideoRequest) -> dict:
 
 
 @app.post("/jobs/{job_id}/approve")
-def approve_job(job_id: str, req: ApproveRequest) -> dict:
+def approve_job(
+    job_id: str, req: ApproveRequest, x_access_code: str | None = Header(default=None)
+) -> dict:
     """Approve (optionally with edits) a script that's awaiting review, then start rendering."""
+    _require_code(x_access_code)
     try:
         job = store.load(job_id)
     except Exception as e:  # noqa: BLE001

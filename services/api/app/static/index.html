@@ -64,6 +64,7 @@
       <label>Voice <select id="voice"></select></label>
       <label>Segments <input type="number" id="segments" min="3" max="12" value="6" /></label>
       <label><input type="checkbox" id="review" checked /> Review script before rendering</label>
+      <label id="codeWrap" style="display:none">Access code <input type="password" id="code" style="width:120px" /></label>
     </div>
 
     <div id="statusRow" class="status" style="display:none">
@@ -91,6 +92,9 @@
     const $ = (id) => document.getElementById(id);
     let timer = null, currentJob = null, reviewing = false;
 
+    const codeVal = () => localStorage.getItem("ghostreel_code") || "";
+    const jsonHeaders = () => ({ "content-type": "application/json", "X-Access-Code": codeVal() });
+
     async function loadOptions() {
       try {
         const presets = await (await fetch("/presets")).json();
@@ -98,6 +102,14 @@
           + '<option value="custom">custom (from image)</option>';
         const voices = await (await fetch("/voices")).json();
         $("voice").innerHTML = voices.map(v => `<option value="${v.id}">${v.name}</option>`).join("");
+      } catch {}
+      try {
+        const h = await (await fetch("/health")).json();
+        if (h.gated) {
+          $("codeWrap").style.display = "flex";
+          $("code").value = codeVal();
+          $("code").addEventListener("input", () => localStorage.setItem("ghostreel_code", $("code").value));
+        }
       } catch {}
     }
 
@@ -120,9 +132,15 @@
           payload.style_negatives = window.customStyle.negatives;
         }
         const r = await fetch("/jobs", {
-          method: "POST", headers: {"content-type":"application/json"},
+          method: "POST", headers: jsonHeaders(),
           body: JSON.stringify(payload)
         });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          $("step").textContent = r.status === 401 ? "access code required or invalid"
+            : (err.detail || "request failed");
+          $("go").disabled = false; return;
+        }
         const { job_id } = await r.json();
         currentJob = job_id;
         watch(job_id);
@@ -189,7 +207,7 @@
       }));
       try {
         await fetch(`/jobs/${currentJob}/approve`, {
-          method: "POST", headers: {"content-type":"application/json"},
+          method: "POST", headers: jsonHeaders(),
           body: JSON.stringify({ segments })
         });
         $("reviewbar").style.display = "none"; $("approve").disabled = false;
@@ -214,7 +232,7 @@
       const fd = new FormData();
       for (const f of $("ref").files) fd.append("files", f);
       try {
-        window.customStyle = await (await fetch("/style/extract", { method:"POST", body: fd })).json();
+        window.customStyle = await (await fetch("/style/extract", { method:"POST", headers: {"X-Access-Code": codeVal()}, body: fd })).json();
         $("refStatus").textContent = "✓ style captured";
       } catch { $("refStatus").textContent = "extraction failed"; }
     });

@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     asset_prefix: str = "ghostreel"
     segment_count: int = 6
 
+    # Rate gate (protects the public URL's API budget). If access_code is set, the
+    # generation endpoints require a matching X-Access-Code header. daily_job_limit is a
+    # hard ceiling on jobs started per calendar day regardless of code.
+    access_code: str = ""
+    daily_job_limit: int = 50
+
     # Phase 2 evaluate-retry
     qa_enabled: bool = True
     qa_model: str = "gemini-2.5-flash"
