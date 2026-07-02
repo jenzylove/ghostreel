@@ -1,7 +1,14 @@
 """Request/response + domain schemas."""
 from __future__ import annotations
 
-from pydantic import BaseModel
+from datetime import datetime, timezone
+from enum import Enum
+
+from pydantic import BaseModel, Field
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 # --- Phase 0 seam ---
@@ -50,6 +57,7 @@ class Segment(BaseModel):
     index: int
     narration: str                    # spoken text — drives the voiceover AND the timing
     visual: str                       # what the still image should show
+    image_prompt: str | None = None   # the styled prompt actually sent (provenance)
     image_url: str | None = None
     audio_url: str | None = None
     duration_s: float | None = None   # measured from the generated audio (audio drives timing)
@@ -61,6 +69,32 @@ class Script(BaseModel):
     segments: list[Segment]
 
 
+# --- Phase 3 jobs ---
+class JobStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class Job(BaseModel):
+    """A video job. Persisted to B2 as JSON — the record doubles as the provenance manifest
+    (topic, full script with per-segment prompts + QA verdicts, models used, timestamps)."""
+
+    job_id: str
+    topic: str
+    status: JobStatus = JobStatus.PENDING
+    step: str = "queued"
+    script: Script | None = None
+    video_url: str | None = None
+    retries: int = 0                          # total self-heals across segments
+    error: str | None = None
+    models: dict[str, str] = {}               # provenance: which model powered each stage
+    created_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=_now)
+
+
+# --- API bodies ---
 class VideoRequest(BaseModel):
     topic: str
 
@@ -68,5 +102,5 @@ class VideoRequest(BaseModel):
 class VideoResponse(BaseModel):
     video_url: str | None
     segments: int
-    retries: int = 0                  # total auto-regenerations across all segments (self-healing count)
+    retries: int = 0
     took_s: float
