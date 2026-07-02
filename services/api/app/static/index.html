@@ -141,6 +141,15 @@ ${s.qa_reason ? "\nqa: " + escapeHtml(s.qa_reason) : ""}</div>
 
     $("go").addEventListener("click", start);
     $("topic").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
+
+    // View an existing job with no new spend: open  /?job=<id>
+    const preload = new URLSearchParams(location.search).get("job");
+    if (preload) {
+      $("statusRow").style.display = "flex";
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => poll(preload), 3000);
+      poll(preload);
+    }
   </script>
 </body>
 </html>
