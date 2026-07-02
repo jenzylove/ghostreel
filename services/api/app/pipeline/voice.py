@@ -24,7 +24,9 @@ def generate_voice(narration: str) -> str | None:
             prompt=narration,
             voice_id=settings.voice_id,
         )
-        .run(sink=sink())
+        # timeout bounds a hung TTS call (we saw a 2m13s connection timeout); max_retries
+        # lets Genblaze self-heal transient failures — voice's equivalent of the image QA loop.
+        .run(sink=sink(), timeout=90, max_retries=2)
     )
     try:
         run_obj = out[0] if isinstance(out, tuple) else getattr(out, "run", out)

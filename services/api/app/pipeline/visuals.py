@@ -23,7 +23,9 @@ def generate_image(prompt: str) -> dict:
             prompt=prompt,
             modality=Modality.IMAGE,
         )
-        .run(sink=sink())
+        # timeout bounds a hung image call; on failure generate_image returns None and the
+        # QA loop in generate_and_qa regenerates, so we don't hang minutes on one image.
+        .run(sink=sink(), timeout=120)
     )
     took = round(time.time() - t0, 1)
 
