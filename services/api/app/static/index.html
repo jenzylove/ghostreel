@@ -59,6 +59,8 @@
 
     <div class="controls">
       <label>Style <select id="style"></select></label>
+      <label id="customWrap" style="display:none">Reference <input type="file" id="ref" accept="image/*" multiple /></label>
+      <span id="refStatus" class="badge" style="display:none"></span>
       <label>Voice <select id="voice"></select></label>
       <label>Segments <input type="number" id="segments" min="3" max="12" value="6" /></label>
       <label><input type="checkbox" id="review" checked /> Review script before rendering</label>
@@ -92,7 +94,8 @@
     async function loadOptions() {
       try {
         const presets = await (await fetch("/presets")).json();
-        $("style").innerHTML = presets.map(p => `<option value="${p.id}">${p.id}</option>`).join("");
+        $("style").innerHTML = presets.map(p => `<option value="${p.id}">${p.id}</option>`).join("")
+          + '<option value="custom">custom (from image)</option>';
         const voices = await (await fetch("/voices")).json();
         $("voice").innerHTML = voices.map(v => `<option value="${v.id}">${v.name}</option>`).join("");
       } catch {}
@@ -105,15 +108,20 @@
       $("grid").innerHTML = ""; $("result").style.display = "none"; $("reviewbar").style.display = "none";
       $("statusRow").style.display = "flex"; $("step").textContent = "queued";
       try {
+        const payload = {
+          topic,
+          style_id: $("style").value,
+          voice_id: $("voice").value,
+          segment_count: parseInt($("segments").value) || 6,
+          review: $("review").checked
+        };
+        if ($("style").value === "custom" && window.customStyle) {
+          payload.style_positive = window.customStyle.positive;
+          payload.style_negatives = window.customStyle.negatives;
+        }
         const r = await fetch("/jobs", {
           method: "POST", headers: {"content-type":"application/json"},
-          body: JSON.stringify({
-            topic,
-            style_id: $("style").value,
-            voice_id: $("voice").value,
-            segment_count: parseInt($("segments").value) || 6,
-            review: $("review").checked
-          })
+          body: JSON.stringify(payload)
         });
         const { job_id } = await r.json();
         currentJob = job_id;
@@ -195,6 +203,22 @@
     $("go").addEventListener("click", start);
     $("topic").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
     $("approve").addEventListener("click", approve);
+
+    $("style").addEventListener("change", () => {
+      $("customWrap").style.display = $("style").value === "custom" ? "flex" : "none";
+      if ($("style").value !== "custom") $("refStatus").style.display = "none";
+    });
+    $("ref").addEventListener("change", async () => {
+      if (!$("ref").files.length) return;
+      $("refStatus").style.display = ""; $("refStatus").textContent = "extracting style…";
+      const fd = new FormData();
+      for (const f of $("ref").files) fd.append("files", f);
+      try {
+        window.customStyle = await (await fetch("/style/extract", { method:"POST", body: fd })).json();
+        $("refStatus").textContent = "✓ style captured";
+      } catch { $("refStatus").textContent = "extraction failed"; }
+    });
+
     loadOptions();
 
     // View an existing job with no new spend: open  /?job=<id>

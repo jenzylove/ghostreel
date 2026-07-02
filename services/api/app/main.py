@@ -17,7 +17,8 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+import httpx
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import VOICES, settings
@@ -28,9 +29,10 @@ from app.models import (
     GenerateResponse,
     Job,
     JobStatus,
+    StylePreset,
     VideoRequest,
 )
-from app.pipeline.style import get_preset, list_presets
+from app.pipeline.style import extract_style_preset, get_preset, list_presets
 from app.pipeline.visuals import generate_image
 from app.storage.b2 import backend, key_from_url
 
@@ -81,7 +83,38 @@ def presets() -> list[dict]:
 
 @app.get("/voices")
 def voices() -> list[dict]:
+    """The account's real ElevenLabs voices (so every option actually works, incl. female
+    voices). Falls back to the static list if the API call fails."""
+    try:
+        r = httpx.get(
+            "https://api.elevenlabs.io/v1/voices",
+            headers={"xi-api-key": settings.eleven_api_key},
+            timeout=10,
+        )
+        r.raise_for_status()
+        out = []
+        for v in r.json().get("voices", []):
+            gender = (v.get("labels") or {}).get("gender")
+            name = v["name"] + (f" ({gender})" if gender else "")
+            out.append({"name": name, "id": v["voice_id"]})
+        if out:
+            return out
+    except Exception:
+        pass
     return [{"name": name, "id": vid} for name, vid in VOICES.items()]
+
+
+@app.post("/style/extract")
+async def style_extract(files: list[UploadFile] = File(...)) -> dict:
+    """Extract a reusable style preset from uploaded reference image(s) via Gemini vision."""
+    images = [await f.read() for f in files]
+    if not images:
+        raise HTTPException(status_code=400, detail="no images uploaded")
+    try:
+        preset = extract_style_preset(images)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"style extraction failed: {e}") from e
+    return {"positive": preset.positive, "negatives": preset.negatives}
 
 
 @app.post("/generate", response_model=GenerateResponse)
@@ -93,11 +126,19 @@ def generate(req: GenerateRequest) -> GenerateResponse:
 @app.post("/jobs")
 def create_job(req: VideoRequest) -> dict:
     """Enqueue a video job with the chosen controls. Returns immediately with its id."""
+    # Custom style (extracted from a reference image) overrides the named preset.
+    if req.style_positive:
+        style = StylePreset(positive=req.style_positive, negatives=req.style_negatives or "")
+        style_id = "custom"
+    else:
+        style = get_preset(req.style_id)
+        style_id = req.style_id or "doodle"
+
     job = Job(
         job_id=uuid.uuid4().hex,
         topic=req.topic,
-        style_id=req.style_id or "doodle",
-        style=get_preset(req.style_id),
+        style_id=style_id,
+        style=style,
         segment_count=req.segment_count or settings.segment_count,
         voice_id=req.voice_id or settings.voice_id,
         review=req.review,

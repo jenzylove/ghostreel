@@ -105,6 +105,8 @@ class Job(BaseModel):
 class VideoRequest(BaseModel):
     topic: str
     style_id: str | None = None
+    style_positive: str | None = None      # custom style (from a reference image) — overrides style_id
+    style_negatives: str | None = None
     segment_count: int | None = None
     voice_id: str | None = None
     review: bool = False
