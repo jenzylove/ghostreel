@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.config import settings
 from app.jobs import store
-from app.models import Beat, Job, JobStatus, QaAttempt, Segment, StylePreset
+from app.models import Beat, Job, JobStatus, QaAttempt, StylePreset
 from app.pipeline.assemble import assemble_slideshow
 from app.pipeline.metadata import generate_thumbnail, generate_yt_metadata
 from app.pipeline.script import derive_beat_visuals, generate_script
@@ -66,9 +66,7 @@ def _generate_beat_images_parallel(
     total = len(job.script.beats)
 
     def _worker(beat: Beat) -> tuple[int, str | None, list[QaAttempt]]:
-        # Adapter: generate_and_qa takes a Segment-like object; QA doesn't use its fields.
-        fake_seg = Segment(index=beat.index, narration=beat.text, visual=beat.visual)
-        url, attempts = generate_and_qa(beat.image_prompt, fake_seg, preset)
+        url, attempts = generate_and_qa(beat.image_prompt, beat, preset)
         return beat.index, url, attempts
 
     with ThreadPoolExecutor(max_workers=_BEAT_WORKERS) as pool:

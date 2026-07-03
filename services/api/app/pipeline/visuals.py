@@ -6,7 +6,7 @@ import time
 from genblaze_core import Modality, Pipeline
 
 from app.config import settings
-from app.models import QaAttempt, Segment, StylePreset, Verdict
+from app.models import QaAttempt, StylePreset, Verdict
 from app.pipeline.evaluate import evaluate_image
 from app.pipeline.providers import image_provider
 from app.storage.b2 import get_by_url, sink
@@ -40,7 +40,7 @@ def generate_image(prompt: str) -> dict:
 
 
 def generate_and_qa(
-    styled_prompt: str, segment: Segment, style: StylePreset
+    styled_prompt: str, segment: object, style: StylePreset
 ) -> tuple[str | None, list[QaAttempt]]:
     """Generate a segment image, QA it, and regenerate on failure (capped).
 

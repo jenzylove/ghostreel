@@ -15,7 +15,7 @@ from io import BytesIO
 from PIL import Image
 
 from app.config import settings
-from app.models import Segment, StylePreset, Verdict
+from app.models import StylePreset, Verdict
 
 
 def _extract_json(text: str) -> dict:
@@ -48,7 +48,7 @@ def structural_check(data: bytes) -> tuple[bool, str]:
     return True, "ok"
 
 
-def semantic_check(data: bytes, segment: Segment, style: StylePreset) -> Verdict:
+def semantic_check(data: bytes, segment: object, style: StylePreset) -> Verdict:
     try:
         from google import genai
         from google.genai import types
@@ -76,7 +76,7 @@ def semantic_check(data: bytes, segment: Segment, style: StylePreset) -> Verdict
         return Verdict(passed=True, score=1.0, reason=f"semantic check skipped: {e}")
 
 
-def evaluate_image(data: bytes, segment: Segment, style: StylePreset) -> Verdict:
+def evaluate_image(data: bytes, segment: object, style: StylePreset) -> Verdict:
     ok, reason = structural_check(data)
     if not ok:
         return Verdict(passed=False, score=0.0, reason=f"structural: {reason}")
