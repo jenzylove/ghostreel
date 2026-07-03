@@ -1,11 +1,13 @@
-"""Hosted STT via genblaze-assemblyai — powers bring-your-own-voice + word-level captions.
+"""Hosted STT via genblaze-assemblyai — word-level timings for beat grouping and captions.
 
-Takes an audio URL (AssemblyAI fetches it) and returns the transcript text + word-level
-timings. Needs ASSEMBLYAI_API_KEY.
+transcribe_url   — takes an audio URL (AssemblyAI fetches it), returns text + word timings.
+group_into_beats — groups words into visual beat windows of ~beat_duration_s seconds,
+                   preferring natural pauses over mid-phrase cuts.
 """
 from __future__ import annotations
 
 from app.config import settings
+from app.models import Beat
 
 
 def transcribe_url(audio_url: str, model: str | None = None) -> dict:
@@ -42,21 +44,50 @@ def transcribe_url(audio_url: str, model: str | None = None) -> dict:
     return {"text": text, "words": words}
 
 
-def segment_words(words: list[dict], n: int) -> list[dict]:
-    """Group word timings into n time-even beats: [{text, start, end}, ...].
+def group_into_beats(
+    word_timings: list[dict], beat_duration_s: float | None = None
+) -> list[Beat]:
+    """Group word-level timings into visual beat windows.
 
-    Beats are illustration windows for image generation; captions use the raw word timings
-    separately, so they stay word-accurate regardless of this grouping.
+    Closes a beat after ~beat_duration_s of audio. Prefers a natural pause (next word
+    starts ≥300ms later) rather than cutting mid-phrase, up to 1.5× the target duration.
     """
-    if not words:
+    duration = beat_duration_s or settings.beat_duration_s
+    if not word_timings:
         return []
-    span = words[-1]["end"] or 1.0
-    buckets: list[list[str]] = [[] for _ in range(n)]
-    for w in words:
-        mid = (w["start"] + w["end"]) / 2
-        idx = min(n - 1, max(0, int(mid / span * n)))
-        buckets[idx].append(w["word"])
-    return [
-        {"text": " ".join(buckets[i]).strip() or "(pause)", "start": i * span / n, "end": (i + 1) * span / n}
-        for i in range(n)
-    ]
+
+    beats: list[Beat] = []
+    beat_start = word_timings[0]["start"]
+    current: list[dict] = []
+
+    for i, w in enumerate(word_timings):
+        current.append(w)
+        elapsed = w["end"] - beat_start
+
+        if elapsed >= duration:
+            next_gap = (
+                word_timings[i + 1]["start"] - w["end"]
+                if i + 1 < len(word_timings) else 1.0
+            )
+            natural_pause = next_gap >= 0.3
+            max_stretch = elapsed >= duration * 1.5
+
+            if natural_pause or max_stretch:
+                beats.append(Beat(
+                    index=len(beats),
+                    start_s=beat_start,
+                    end_s=w["end"],
+                    text=" ".join(ww["word"] for ww in current),
+                ))
+                beat_start = word_timings[i + 1]["start"] if i + 1 < len(word_timings) else w["end"]
+                current = []
+
+    if current:
+        beats.append(Beat(
+            index=len(beats),
+            start_s=beat_start,
+            end_s=current[-1]["end"],
+            text=" ".join(w["word"] for w in current),
+        ))
+
+    return beats

@@ -1,12 +1,10 @@
-"""Final assembly: per-segment images + narration -> one MP4 in B2.
+"""Final assembly: beat-timed images + single audio track -> one MP4 in B2.
 
-Direct ffmpeg subprocess (the sample confirms genblaze has no composition primitive).
-Timing rule: each segment's on-screen duration is the measured length of ITS narration
-audio, so visuals stay synced to the voice. Each segment is a SELF-CONTAINED clip (image +
-its own audio, -shortest), so frame-rounding can't accumulate into cross-segment drift.
+Architecture: one audio file (TTS or BYO recording), images shown in slideshow order
+timed to the beat windows derived from word timings. No per-segment A/V coupling —
+the audio is the source of truth; images are a display layer on top of it.
 
-Captions: built from the narration text + measured per-segment durations (segment-level, no
-Whisper needed) and burned in with libass. Word-level karaoke sync would need Whisper.
+Captions: word-level karaoke SRT built from AssemblyAI timings, burned with libass.
 """
 from __future__ import annotations
 
@@ -44,36 +42,12 @@ def _srt_ts(t: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def _wrap(text: str, width: int = 42) -> str:
-    lines: list[str] = []
-    cur = ""
-    for w in text.split():
-        if cur and len(cur) + len(w) + 1 > width:
-            lines.append(cur)
-            cur = w
-        else:
-            cur = f"{cur} {w}".strip()
-    if cur:
-        lines.append(cur)
-    return "\n".join(lines)
-
-
-def _build_srt(cues: list[tuple[str, float]], path: Path) -> None:
-    out: list[str] = []
-    t = 0.0
-    for i, (text, dur) in enumerate(cues, 1):
-        start, end = t, t + dur
-        t = end
-        out += [str(i), f"{_srt_ts(start)} --> {_srt_ts(end)}", _wrap(text), ""]
-    path.write_text("\n".join(out), encoding="utf-8")
-
-
 def _build_word_srt(words: list[dict], path: Path, group: int = 4) -> None:
     """Karaoke-style captions: small word groups timed to the actual spoken audio."""
     out: list[str] = []
     i = n = 0
     while i < len(words):
-        chunk = words[i:i + group]
+        chunk = words[i : i + group]
         i += group
         n += 1
         out += [
@@ -85,90 +59,35 @@ def _build_word_srt(words: list[dict], path: Path, group: int = 4) -> None:
     path.write_text("\n".join(out), encoding="utf-8")
 
 
-def assemble_video(script: Script, captions: bool = True) -> str | None:
-    work = Path(tempfile.mkdtemp(prefix="ghostreel_"))
-    clips: list[Path] = []
-    cues: list[tuple[str, float]] = []   # (narration, duration) for captions, in render order
+def assemble_slideshow(script: Script, audio_bytes: bytes, captions: bool = True) -> str | None:
+    """Beat-timed slideshow assembly over a single audio track.
 
-    # 1. Build each segment as a SELF-CONTAINED clip: its image + its own narration, with
-    #    -shortest so the clip length is exactly the audio length (no cross-segment drift).
-    for seg in script.segments:
-        if not seg.image_url or not seg.audio_url:
-            continue
-        img = work / f"img_{seg.index}.png"
-        aud = work / f"aud_{seg.index}.mp3"
-        img.write_bytes(get_by_url(seg.image_url))
-        aud.write_bytes(get_by_url(seg.audio_url))
-        seg.duration_s = _audio_duration(aud)
+    Each beat's image is shown for (beat.end_s - beat.start_s) seconds. The last beat
+    extends to fill remaining audio. Word-level karaoke captions are burned when enabled.
+    """
+    work = Path(tempfile.mkdtemp(prefix="ghostreel_sl_"))
 
-        clip = work / f"clip_{seg.index}.mp4"
-        subprocess.run(
-            [*_FF, "-loop", "1", "-i", str(img), "-i", str(aud),
-             "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,"
-                    f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS}",
-             "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-             "-c:a", "aac", "-shortest", str(clip)],
-            check=True, timeout=300, capture_output=True,
-        )
-        clips.append(clip)
-        cues.append((seg.narration, seg.duration_s))
+    # Write the single audio track.
+    audio_path = work / "audio.mp3"
+    audio_path.write_bytes(audio_bytes)
+    audio_dur = _audio_duration(audio_path)
 
-    if not clips:
+    beats = [b for b in script.beats if b.image_url]
+    if not beats:
         return None
 
-    # 2. Concat the self-contained clips (identical encode params -> stream copy is safe).
-    clip_list = work / "clips.txt"
-    clip_list.write_text("".join(f"file '{c.as_posix()}'\n" for c in clips))
-    concat = work / "concat.mp4"
-    subprocess.run(
-        [*_FF, "-f", "concat", "-safe", "0", "-i", str(clip_list), "-c", "copy", str(concat)],
-        check=True, timeout=300, capture_output=True,
-    )
-
-    # 3. Optionally burn captions (re-encode pass). Run with cwd=work + relative filenames so
-    #    the subtitles filter never has to escape a temp path with special characters.
-    if captions:
-        _build_srt(cues, work / "captions.srt")
-        final = work / "final.mp4"
-        subprocess.run(
-            [*_FF, "-i", "concat.mp4",
-             "-vf", f"subtitles=captions.srt:force_style='{_CAPTION_STYLE}'",
-             "-c:a", "copy", "final.mp4"],
-            check=True, timeout=600, capture_output=True, cwd=str(work),
-        )
-    else:
-        final = concat
-
-    # 4. Upload to B2 and return a viewable (presigned) URL.
-    key = f"{settings.asset_prefix}/videos/{uuid.uuid4().hex}.mp4"
-    backend().put(key, final.read_bytes(), content_type="video/mp4")
-    try:
-        return backend().presigned_get_url(key, expires_in=604800)
-    except Exception:
-        return key
-
-
-def assemble_byo(script: Script, audio_bytes: bytes, word_timings: list[dict],
-                 captions: bool = True) -> str | None:
-    """Bring-your-own-voice assembly: style-locked images spread evenly across the user's
-    recording, muxed over the ORIGINAL audio, with karaoke-style captions from word timings."""
-    work = Path(tempfile.mkdtemp(prefix="ghostreel_byo_"))
-    voice = work / "voice.mp3"
-    voice.write_bytes(audio_bytes)
-    audio_dur = _audio_duration(voice)
-
-    segs = [s for s in script.segments if s.image_url]
-    if not segs:
-        return None
-    n = len(segs)
-    per = audio_dur / n
-
+    # Build one silent video clip per beat, sized to the beat's display duration.
     clips: list[Path] = []
-    for i, seg in enumerate(segs):
+    for i, beat in enumerate(beats):
         img = work / f"img_{i}.png"
-        img.write_bytes(get_by_url(seg.image_url))
-        dur = per if i < n - 1 else max(0.1, audio_dur - per * (n - 1))
-        seg.duration_s = dur
+        img.write_bytes(get_by_url(beat.image_url))
+
+        # Use the gap to the next beat as duration; stretch the last beat to fill audio.
+        if i < len(beats) - 1:
+            dur = beats[i + 1].start_s - beat.start_s
+        else:
+            dur = max(0.1, audio_dur - beat.start_s)
+
         clip = work / f"clip_{i}.mp4"
         subprocess.run(
             [*_FF, "-loop", "1", "-t", f"{dur:.3f}", "-i", str(img),
@@ -179,30 +98,31 @@ def assemble_byo(script: Script, audio_bytes: bytes, word_timings: list[dict],
         )
         clips.append(clip)
 
+    # Stream-copy concat (identical encode params = safe).
     clip_list = work / "clips.txt"
     clip_list.write_text("".join(f"file '{c.as_posix()}'\n" for c in clips))
     concat = work / "concat.mp4"
     subprocess.run(
         [*_FF, "-f", "concat", "-safe", "0", "-i", str(clip_list), "-c", "copy", str(concat)],
-        check=True, timeout=300, capture_output=True,
+        check=True, timeout=600, capture_output=True,
     )
 
-    # Mux the ORIGINAL recording + optionally burn karaoke captions (cwd=work keeps the
-    # subtitles filter path clean).
+    # Mux with single audio track + optional word-level captions.
+    # Run with cwd=work + relative filenames so libass never has to escape a temp path.
     final = work / "final.mp4"
-    if captions and word_timings:
-        _build_word_srt(word_timings, work / "cap.srt")
+    if captions and script.word_timings:
+        _build_word_srt(script.word_timings, work / "cap.srt")
         subprocess.run(
-            [*_FF, "-i", "concat.mp4", "-i", "voice.mp3",
+            [*_FF, "-i", "concat.mp4", "-i", "audio.mp3",
              "-vf", f"subtitles=cap.srt:force_style='{_CAPTION_STYLE}'",
              "-c:a", "aac", "-shortest", "final.mp4"],
-            check=True, timeout=600, capture_output=True, cwd=str(work),
+            check=True, timeout=900, capture_output=True, cwd=str(work),
         )
     else:
         subprocess.run(
-            [*_FF, "-i", str(concat), "-i", str(voice),
+            [*_FF, "-i", str(concat), "-i", str(audio_path),
              "-c:v", "copy", "-c:a", "aac", "-shortest", str(final)],
-            check=True, timeout=300, capture_output=True,
+            check=True, timeout=600, capture_output=True,
         )
 
     key = f"{settings.asset_prefix}/videos/{uuid.uuid4().hex}.mp4"

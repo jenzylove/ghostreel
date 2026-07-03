@@ -26,10 +26,11 @@ def _extract_json(text: str) -> dict:
 
 def generate_yt_metadata(script: Script) -> dict:
     """One LLM call → upload-ready YouTube title, description, and tags."""
-    narrations = "\n".join(f"{i + 1}. {s.narration}" for i, s in enumerate(script.segments))
+    # Truncate narration to keep token use reasonable while giving enough context.
+    narration_preview = script.narration[:2500] + ("…" if len(script.narration) > 2500 else "")
     prompt = (
-        f"You are a YouTube SEO specialist. Create upload-ready metadata for a short faceless "
-        f"video about '{script.topic}'.\n\nScript:\n{narrations}\n\n"
+        f"You are a YouTube SEO specialist. Create upload-ready metadata for a faceless "
+        f"video about '{script.topic}'.\n\nNarration (excerpt):\n{narration_preview}\n\n"
         "Return ONLY valid JSON (no markdown fences):\n"
         '{"title": "under 60 chars, compelling and accurate — no ALL CAPS or excessive punctuation", '
         '"description": "3-4 short engaging paragraphs about the video content; end with a call to action to like and subscribe", '

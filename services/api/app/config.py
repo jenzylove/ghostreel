@@ -38,7 +38,9 @@ class Settings(BaseSettings):
     stt_model: str = "universal-3-pro"
     voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
     asset_prefix: str = "ghostreel"
-    segment_count: int = 6
+    default_minutes: float = 4.0      # target video length when not specified by the user
+    beat_duration_s: float = 10.0     # one image every N seconds of audio
+    tts_chunk_chars: int = 4500       # ElevenLabs per-request char limit
 
     # Rate gate (protects the public URL's API budget). If access_code is set, the
     # generation endpoints require a matching X-Access-Code header. daily_job_limit is a

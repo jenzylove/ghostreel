@@ -22,9 +22,9 @@ class GenerateResponse(BaseModel):
     raw: str | None = None
 
 
-# --- Phase 1 vertical slice ---
+# --- Style ---
 class StylePreset(BaseModel):
-    """A reusable style-lock string appended to every image prompt (the proven technique)."""
+    """A reusable style-lock string appended to every image prompt."""
 
     positive: str
     negatives: str = ""
@@ -36,7 +36,7 @@ class StylePreset(BaseModel):
         return prompt
 
 
-# --- Phase 2 evaluate-retry ---
+# --- QA ---
 class Verdict(BaseModel):
     passed: bool
     score: float
@@ -44,8 +44,7 @@ class Verdict(BaseModel):
 
 
 class QaAttempt(BaseModel):
-    """One generate+evaluate cycle for a segment image (the self-healing audit trail)."""
-
+    """One generate+evaluate cycle for a beat image (the self-healing audit trail)."""
     attempt: int
     url: str | None
     passed: bool
@@ -53,33 +52,39 @@ class QaAttempt(BaseModel):
     reason: str
 
 
-class Segment(BaseModel):
+# --- Slideshow beat ---
+class Beat(BaseModel):
+    """One visual beat: the time window during which one image is shown on screen."""
     index: int
-    narration: str                    # spoken text — drives the voiceover AND the timing
-    visual: str                       # what the still image should show
-    image_prompt: str | None = None   # the styled prompt actually sent (provenance)
+    start_s: float                 # seconds into the audio where this image appears
+    end_s: float                   # seconds into the audio where the next image takes over
+    text: str                      # words spoken during this beat (drives the image prompt)
+    visual: str = ""               # derived visual description
+    image_prompt: str | None = None
     image_url: str | None = None
-    audio_url: str | None = None
-    duration_s: float | None = None   # measured from the generated audio (audio drives timing)
-    attempts: list[QaAttempt] = []    # every QA attempt for this segment's image
+    attempts: list[QaAttempt] = []
 
 
+# --- Script (new: single continuous narration) ---
 class Script(BaseModel):
     topic: str
-    segments: list[Segment]
+    narration: str = ""            # full continuous spoken text (600-900 words)
+    audio_url: str | None = None   # single TTS audio stored in B2 (None for BYO — use Job.audio_key)
+    word_timings: list[dict] = []  # AssemblyAI word-level timings [{word, start, end}, ...]
+    beats: list[Beat] = []         # populated after word timings; one image per beat
 
 
-# --- Phase 3/4 jobs ---
+# --- Job states ---
 class JobStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
-    AWAITING_REVIEW = "awaiting_review"   # script generated, paused for human approval/edit
+    AWAITING_REVIEW = "awaiting_review"
     DONE = "done"
     FAILED = "failed"
 
 
 class Job(BaseModel):
-    """A video job. Persisted to B2 as JSON — the record doubles as the provenance manifest."""
+    """A video job. Persisted to B2 as JSON — doubles as the provenance manifest."""
 
     job_id: str
     topic: str
@@ -90,19 +95,16 @@ class Job(BaseModel):
     retries: int = 0
     error: str | None = None
     models: dict[str, str] = {}
-    # Bring-your-own-voice (BYO): the pipeline transcribes an uploaded recording instead of
-    # generating TTS. voice_mode="byo", audio_key points at the recording in B2, word_timings
-    # drives the karaoke-style captions.
-    voice_mode: str = "tts"               # "tts" | "byo"
-    audio_key: str | None = None
-    word_timings: list[dict] = []
-    # Phase 4 controls:
+    # Bring-your-own-voice: user uploads their own recording; pipeline transcribes it.
+    voice_mode: str = "tts"            # "tts" | "byo"
+    audio_key: str | None = None       # B2 key of BYO uploaded recording
+    # Phase 4 controls
     style_id: str = "doodle"
-    style: StylePreset | None = None      # resolved preset (falls back to default if None)
-    segment_count: int = 6
+    style: StylePreset | None = None
+    target_minutes: float = 4.0        # target video length — determines script word count
     voice_id: str = ""
-    captions: bool = True                 # burn segment-level captions into the final video
-    review: bool = False                  # pause after script for human approval/edit
+    captions: bool = True
+    review: bool = False
     approved: bool = False
     # Phase 5: YouTube upload package
     yt_title: str | None = None
@@ -116,28 +118,22 @@ class Job(BaseModel):
 # --- API bodies ---
 class VideoRequest(BaseModel):
     topic: str
-    voice_mode: str = "tts"                 # "tts" | "byo" (byo generates a script, then you record it)
+    voice_mode: str = "tts"
     style_id: str | None = None
-    style_positive: str | None = None      # custom style (from a reference image) — overrides style_id
+    style_positive: str | None = None
     style_negatives: str | None = None
-    segment_count: int | None = None
+    target_minutes: float | None = None   # 2 / 4 / 6 / 8 — determines script length
     voice_id: str | None = None
     captions: bool = True
     review: bool = False
 
 
-class SegmentEdit(BaseModel):
-    index: int
-    narration: str
-    visual: str
-
-
 class ApproveRequest(BaseModel):
-    segments: list[SegmentEdit] | None = None   # optional edited script; omit to approve as-is
+    narration: str | None = None   # if provided, replaces the generated narration before render
 
 
 class VideoResponse(BaseModel):
     video_url: str | None
-    segments: int
+    beats: int
     retries: int = 0
     took_s: float

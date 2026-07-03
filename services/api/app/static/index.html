@@ -19,7 +19,6 @@
     .controls { display:flex; gap:14px; flex-wrap:wrap; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin-bottom:22px; font-size:13px; }
     .controls label { color:var(--muted); display:flex; align-items:center; gap:7px; }
     select, input[type=number] { background:#0a0a0f; border:1px solid #2a2a38; border-radius:9px; padding:7px 10px; color:#fff; font-size:13px; outline:none; }
-    input[type=number]{ width:64px; }
     .status { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 18px; margin-bottom:22px; }
     .dot { width:9px; height:9px; border-radius:50%; background:var(--violet); animation:pulse 1.3s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
@@ -32,18 +31,21 @@
     .seg img { width:100%; aspect-ratio:16/9; object-fit:cover; background:#000; display:block; }
     .seg .ph { width:100%; aspect-ratio:16/9; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; background:#0e0e16; }
     .seg .body { padding:12px 14px; }
-    .seg .narr { font-size:13px; color:#d4d4dc; margin:0 0 8px; }
-    .seg textarea { width:100%; background:#0a0a0f; border:1px solid #2a2a38; border-radius:8px; color:#fff; font:13px/1.4 inherit; padding:8px; resize:vertical; }
-    .seg .vis { width:100%; margin-top:6px; background:#0a0a0f; border:1px solid #2a2a38; border-radius:8px; color:#b7b7c4; font-size:12px; padding:6px 8px; }
+    .seg .narr { font-size:13px; color:#d4d4dc; margin:0 0 6px; }
+    .seg .timing { font-size:11px; color:var(--muted); margin:0 0 6px; }
     .qa { font-size:11px; display:flex; align-items:center; gap:6px; color:var(--muted); }
     .qa .k { padding:2px 8px; border-radius:999px; font-weight:600; }
-    .qa .pass { background:rgba(34,197,94,.15); color:#4ade80; } .qa .fail { background:rgba(239,68,68,.15); color:#f87171; }
     .qa .regen { background:rgba(245,158,11,.15); color:#f59e0b; }
     details { margin-top:8px; } summary { cursor:pointer; color:var(--muted); font-size:12px; }
     .prov { font-size:11px; color:var(--muted); white-space:pre-wrap; margin-top:6px; }
     video { width:100%; border-radius:14px; border:1px solid var(--line); margin-top:6px; }
     .result, .reviewbar { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:22px; }
-    .reviewbar { display:flex; align-items:center; justify-content:space-between; gap:14px; border-color:rgba(245,158,11,.35); }
+    .reviewbar { border-color:rgba(245,158,11,.35); }
+    .reviewbar-top { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:14px; }
+    textarea.narr-edit { width:100%; background:#0a0a0f; border:1px solid #2a2a38; border-radius:10px; color:#ececf1; font:14px/1.6 inherit; padding:12px; resize:vertical; min-height:220px; outline:none; }
+    textarea.narr-edit:focus { border-color:var(--violet); }
+    .record-row { display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap; }
+    .record-row label { font-size:13px; color:var(--muted); }
     a.dl { display:inline-block; margin-top:10px; color:var(--violet); font-weight:600; text-decoration:none; font-size:14px; }
     .models { font-size:11px; color:var(--muted); margin-top:8px; }
     /* YouTube package */
@@ -73,7 +75,7 @@
     <p class="sub">Type a topic. Get a finished faceless video — script, style-locked visuals, voiceover; self-healing and provenance-tracked.</p>
 
     <div class="bar">
-      <input type="text" id="topic" placeholder="e.g. why do cats purr" />
+      <input type="text" id="topic" placeholder="e.g. why the Roman Empire fell" />
       <button id="go">Generate</button>
     </div>
 
@@ -83,7 +85,14 @@
       <span id="refStatus" class="badge" style="display:none"></span>
       <label>Mode <select id="mode"><option value="tts">AI voice</option><option value="byo">My recording</option></select></label>
       <label id="voiceWrap">Voice <select id="voice"></select></label>
-      <label>Segments <input type="number" id="segments" min="3" max="12" value="6" /></label>
+      <label>Length
+        <select id="length">
+          <option value="2">2 min</option>
+          <option value="4" selected>4 min</option>
+          <option value="6">6 min</option>
+          <option value="8">8 min</option>
+        </select>
+      </label>
       <label><input type="checkbox" id="captions" checked /> Captions</label>
       <label><input type="checkbox" id="review" checked /> Review</label>
       <label><input type="checkbox" id="prov" /> Show provenance</label>
@@ -93,14 +102,20 @@
     <div id="statusRow" class="status" style="display:none">
       <span class="dot"></span>
       <span class="step" id="step">queued</span>
-      <span class="badge" id="segCount"></span>
+      <span class="badge" id="beatCount"></span>
       <span class="badge heal" id="healBadge" style="display:none"></span>
     </div>
 
     <div id="reviewbar" class="reviewbar" style="display:none">
-      <span id="reviewMsg">Review &amp; edit the script below, then render.</span>
-      <span id="recordWrap" style="display:none">Your recording: <input type="file" id="recording" accept="audio/*" /></span>
-      <button id="approve">Approve &amp; Render</button>
+      <div class="reviewbar-top">
+        <span id="reviewMsg">Review &amp; edit the narration below, then render.</span>
+        <button id="approve">Approve &amp; Render</button>
+      </div>
+      <textarea id="narration-edit" class="narr-edit" placeholder="Loading narration…"></textarea>
+      <div id="recordWrap" class="record-row" style="display:none">
+        <label>Your recording of this narration:</label>
+        <input type="file" id="recording" accept="audio/*" />
+      </div>
     </div>
 
     <div id="result" class="result" style="display:none">
@@ -150,6 +165,7 @@
   <script>
     const $ = (id) => document.getElementById(id);
     let timer = null, currentJob = null, reviewing = false, currentMode = "tts";
+    let _narrationPopulated = false;
 
     const codeVal = () => localStorage.getItem("ghostreel_code") || "";
     const jsonHeaders = () => ({ "content-type": "application/json", "X-Access-Code": codeVal() });
@@ -175,16 +191,21 @@
     async function start() {
       const topic = $("topic").value.trim();
       if (!topic) return;
-      $("go").disabled = true; reviewing = false;
-      $("grid").innerHTML = ""; $("result").style.display = "none"; $("reviewbar").style.display = "none"; $("ytpkg").style.display = "none";
-      $("statusRow").style.display = "flex"; $("step").textContent = "queued";
+      $("go").disabled = true; reviewing = false; _narrationPopulated = false;
+      $("grid").innerHTML = "";
+      $("result").style.display = "none";
+      $("reviewbar").style.display = "none";
+      $("ytpkg").style.display = "none";
+      $("statusRow").style.display = "flex";
+      $("step").textContent = "queued";
+      $("narration-edit").value = "";
       try {
         const payload = {
           topic,
           voice_mode: $("mode").value,
           style_id: $("style").value,
           voice_id: $("voice").value,
-          segment_count: parseInt($("segments").value) || 6,
+          target_minutes: parseFloat($("length").value) || 4,
           captions: $("captions").checked,
           review: $("review").checked
         };
@@ -216,24 +237,31 @@
       const st = d.status;
       $("statusRow").className = "status " + (st === "done" ? "done" : st === "failed" ? "failed" : st === "awaiting_review" ? "review" : "");
       $("step").textContent = st === "done" ? "done"
-        : st === "failed" ? ("failed — " + (d.error||""))
+        : st === "failed" ? ("failed — " + (d.error || ""))
         : st === "awaiting_review" ? "awaiting your review"
         : ("working · " + d.step);
-      $("segCount").textContent = (d.segments?.length || 0) + " segments";
+      if (d.beat_count > 0) $("beatCount").textContent = d.beat_count + " beats";
+      else if (d.beats?.length) $("beatCount").textContent = d.beats.length + " beats";
       if (d.retries > 0) { $("healBadge").style.display = ""; $("healBadge").textContent = "⟳ " + d.retries + " self-healed"; }
 
       reviewing = (st === "awaiting_review");
       currentMode = d.voice_mode || "tts";
-      $("reviewbar").style.display = reviewing ? "flex" : "none";
+      $("reviewbar").style.display = reviewing ? "block" : "none";
       if (reviewing) {
         const byo = currentMode === "byo";
-        $("recordWrap").style.display = byo ? "inline" : "none";
+        $("recordWrap").style.display = byo ? "flex" : "none";
         $("approve").textContent = byo ? "Record & Render" : "Approve & Render";
         $("reviewMsg").textContent = byo
-          ? "Review & edit the script, record yourself reading it, then upload to render:"
-          : "Review & edit the script below, then render.";
+          ? "Review the narration, record yourself reading it, then upload to render:"
+          : "Review & edit the narration below, then render.";
+        // Populate textarea once (don't overwrite user edits on subsequent polls).
+        if (!_narrationPopulated && d.narration) {
+          $("narration-edit").value = d.narration;
+          _narrationPopulated = true;
+        }
       }
-      renderSegments(d.segments || [], reviewing);
+
+      renderBeats(d.beats || [], reviewing);
 
       if (st === "done" || st === "failed") {
         clearInterval(timer); timer = null; $("go").disabled = false;
@@ -246,40 +274,43 @@
       }
     }
 
-    function renderSegments(segs, editable) {
+    function renderBeats(beats, editable) {
+      if (editable) {
+        // During review: don't render beat cards — user only sees the narration textarea.
+        $("grid").innerHTML = "";
+        return;
+      }
       const showProv = $("prov").checked;
-      $("grid").innerHTML = segs.map(s => {
-        if (editable) {
-          return `<div class="seg"><div class="body" data-idx="${s.index}">
-               <textarea rows="3" class="ed-narr">${escapeHtml(s.narration||"")}</textarea>
-               <input class="vis ed-vis" value="${escapeAttr(s.visual||"")}" placeholder="visual" />
-             </div></div>`;
-        }
-        const media = s.image
-          ? `<img src="${s.image}" alt="segment ${s.index}" />`
-          : `<div class="ph">${s.attempts > 1 ? "regenerating…" : "…"}</div>`;
-        const regen = s.attempts > 1 ? `<div class="qa"><span class="k regen">⟳ regenerated</span></div>` : "";
+      $("grid").innerHTML = beats.map(b => {
+        const media = b.image
+          ? `<img src="${b.image}" alt="beat ${b.index}" />`
+          : `<div class="ph">${b.attempts > 1 ? "regenerating…" : "…"}</div>`;
+        const regen = b.attempts > 1 ? `<div class="qa"><span class="k regen">⟳ regenerated</span></div>` : "";
+        const timing = b.start_s != null
+          ? `<div class="timing">${fmtTime(b.start_s)} – ${fmtTime(b.end_s)}</div>` : "";
         const prov = showProv
-          ? `<details><summary>provenance</summary><div class="prov">prompt: ${escapeHtml(s.image_prompt || s.visual || "")}${s.qa_reason ? "\nqa: " + escapeHtml(s.qa_reason) : ""}</div></details>`
+          ? `<details><summary>provenance</summary><div class="prov">prompt: ${escapeHtml(b.image_prompt || b.visual || "")}${b.qa_reason ? "\nqa: " + escapeHtml(b.qa_reason) : ""}</div></details>`
           : "";
         return `<div class="seg">${media}
-          <div class="body"><p class="narr">${escapeHtml(s.narration || "")}</p>${regen}${prov}</div></div>`;
+          <div class="body">${timing}<p class="narr">${escapeHtml(b.text || "")}</p>${regen}${prov}</div></div>`;
       }).join("");
+    }
+
+    function fmtTime(s) {
+      if (s == null) return "";
+      const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+      return `${m}:${String(sec).padStart(2, "0")}`;
     }
 
     async function approve() {
       if (!currentJob) return;
-      const segments = [...document.querySelectorAll(".seg .body[data-idx]")].map(b => ({
-        index: parseInt(b.dataset.idx),
-        narration: b.querySelector(".ed-narr").value,
-        visual: b.querySelector(".ed-vis").value
-      }));
+      const narration = $("narration-edit").value.trim();
       if (currentMode === "byo") {
-        if (!$("recording").files.length) { alert("Upload your recording of the script first"); return; }
+        if (!$("recording").files.length) { alert("Upload your recording of the narration first"); return; }
         $("approve").disabled = true;
         const fd = new FormData();
         fd.append("audio", $("recording").files[0]);
-        fd.append("segments", JSON.stringify(segments));
+        if (narration) fd.append("narration", narration);
         try {
           await fetch(`/jobs/${currentJob}/record`, { method: "POST", headers: { "X-Access-Code": codeVal() }, body: fd });
           $("reviewbar").style.display = "none"; $("approve").disabled = false; watch(currentJob);
@@ -287,7 +318,10 @@
       } else {
         $("approve").disabled = true;
         try {
-          await fetch(`/jobs/${currentJob}/approve`, { method: "POST", headers: jsonHeaders(), body: JSON.stringify({ segments }) });
+          await fetch(`/jobs/${currentJob}/approve`, {
+            method: "POST", headers: jsonHeaders(),
+            body: JSON.stringify({ narration: narration || null })
+          });
           $("reviewbar").style.display = "none"; $("approve").disabled = false; watch(currentJob);
         } catch { $("approve").disabled = false; }
       }
@@ -304,7 +338,7 @@
       if (d.thumbnail) {
         tw.innerHTML = `<img class="ytpkg-thumb" src="${d.thumbnail}" alt="thumbnail" />`;
       } else {
-        tw.innerHTML = `<div class="ytpkg-thumb-ph" id="thumbPh">generating…</div>`;
+        tw.innerHTML = `<div class="ytpkg-thumb-ph">generating…</div>`;
       }
     }
 
@@ -312,20 +346,17 @@
       const el = $(id); if (!el) return;
       navigator.clipboard.writeText(el.textContent).then(() => flashCopy(event.target));
     }
-
     function copyTags() {
       const tags = [...$("ytTags").querySelectorAll(".tag")].map(t => t.textContent).join(", ");
       navigator.clipboard.writeText(tags).then(() => flashCopy(event.target));
     }
-
     function copyAllYt() {
       const title = $("ytTitle").textContent;
       const desc = $("ytDesc").textContent;
       const tags = [...$("ytTags").querySelectorAll(".tag")].map(t => t.textContent).join(", ");
-      const full = `Title:\n${title}\n\nDescription:\n${desc}\n\nTags:\n${tags}`;
-      navigator.clipboard.writeText(full).then(() => flashCopy($("copyAll")));
+      navigator.clipboard.writeText(`Title:\n${title}\n\nDescription:\n${desc}\n\nTags:\n${tags}`)
+        .then(() => flashCopy($("copyAll")));
     }
-
     function flashCopy(btn) {
       if (!btn) return;
       const orig = btn.textContent;
@@ -333,8 +364,7 @@
       setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1800);
     }
 
-    function escapeHtml(t){ const d=document.createElement("div"); d.textContent=t; return d.innerHTML; }
-    function escapeAttr(t){ return escapeHtml(t).replace(/"/g,"&quot;"); }
+    function escapeHtml(t) { const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
 
     $("go").addEventListener("click", start);
     $("topic").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
@@ -343,7 +373,7 @@
     $("mode").addEventListener("change", () => {
       const byo = $("mode").value === "byo";
       $("voiceWrap").style.display = byo ? "none" : "flex";
-      if (byo) $("review").checked = true;   // BYO always reviews the script, then you record
+      if (byo) $("review").checked = true;
     });
 
     $("style").addEventListener("change", () => {
@@ -363,7 +393,6 @@
 
     loadOptions();
 
-    // View an existing job with no new spend: open  /?job=<id>
     const preload = new URLSearchParams(location.search).get("job");
     if (preload) { $("statusRow").style.display = "flex"; currentJob = preload; watch(preload); }
   </script>
