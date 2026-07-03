@@ -9,4 +9,5 @@ google-genai
 genblaze-core
 genblaze-google
 genblaze-elevenlabs
+genblaze-assemblyai
 genblaze-s3

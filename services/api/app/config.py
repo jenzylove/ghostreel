@@ -30,10 +30,12 @@ class Settings(BaseSettings):
     b2_bucket_name: str = ""
     b2_region: str = ""          # e.g. eu-central-003; when set, skips region auto-detection
     eleven_api_key: str = ""
+    assemblyai_api_key: str = ""  # only needed for the bring-your-own-voice (STT) flow
 
     image_model: str = "imagen-4.0-generate-001"
     chat_model: str = "gemini-2.5-flash"
     tts_model: str = "eleven_v3"
+    stt_model: str = "universal-3-pro"
     voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
     asset_prefix: str = "ghostreel"
     segment_count: int = 6

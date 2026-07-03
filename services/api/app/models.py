@@ -90,6 +90,12 @@ class Job(BaseModel):
     retries: int = 0
     error: str | None = None
     models: dict[str, str] = {}
+    # Bring-your-own-voice (BYO): the pipeline transcribes an uploaded recording instead of
+    # generating TTS. voice_mode="byo", audio_key points at the recording in B2, word_timings
+    # drives the karaoke-style captions.
+    voice_mode: str = "tts"               # "tts" | "byo"
+    audio_key: str | None = None
+    word_timings: list[dict] = []
     # Phase 4 controls:
     style_id: str = "doodle"
     style: StylePreset | None = None      # resolved preset (falls back to default if None)

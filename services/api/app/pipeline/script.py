@@ -37,6 +37,24 @@ def _extract_json(text: str) -> dict:
     return json.loads(t.strip())
 
 
+def visuals_for_narration(narrations: list[str], topic: str = "") -> list[str]:
+    """Given a video's narration beats (e.g. from a transcript), derive one still-image idea
+    per beat in order. Used by the bring-your-own-voice flow. One LLM call."""
+    about = f" about {topic}" if topic else ""
+    listed = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(narrations))
+    instruction = (
+        f"Here are the narration beats of a short video{about}, in order. For EACH beat, give "
+        "a concise description of ONE still image that illustrates it. Return ONLY JSON: "
+        '{"visuals": ["...", "..."]} with exactly one entry per beat, same order.\n\n' + listed
+    )
+    resp = chat(settings.chat_model, prompt=instruction, api_key=settings.gemini_api_key)
+    vis = _extract_json(resp.text).get("visuals", [])
+    # Pad/truncate to match; fall back to the narration text itself if the LLM under-returns.
+    while len(vis) < len(narrations):
+        vis.append(narrations[len(vis)])
+    return [str(v) for v in vis[: len(narrations)]]
+
+
 def generate_script(topic: str, n: int = 6) -> Script:
     resp = chat(
         settings.chat_model,

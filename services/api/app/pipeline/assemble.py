@@ -68,6 +68,23 @@ def _build_srt(cues: list[tuple[str, float]], path: Path) -> None:
     path.write_text("\n".join(out), encoding="utf-8")
 
 
+def _build_word_srt(words: list[dict], path: Path, group: int = 4) -> None:
+    """Karaoke-style captions: small word groups timed to the actual spoken audio."""
+    out: list[str] = []
+    i = n = 0
+    while i < len(words):
+        chunk = words[i:i + group]
+        i += group
+        n += 1
+        out += [
+            str(n),
+            f"{_srt_ts(chunk[0]['start'])} --> {_srt_ts(chunk[-1]['end'])}",
+            " ".join(w["word"] for w in chunk),
+            "",
+        ]
+    path.write_text("\n".join(out), encoding="utf-8")
+
+
 def assemble_video(script: Script, captions: bool = True) -> str | None:
     work = Path(tempfile.mkdtemp(prefix="ghostreel_"))
     clips: list[Path] = []
@@ -123,6 +140,71 @@ def assemble_video(script: Script, captions: bool = True) -> str | None:
         final = concat
 
     # 4. Upload to B2 and return a viewable (presigned) URL.
+    key = f"{settings.asset_prefix}/videos/{uuid.uuid4().hex}.mp4"
+    backend().put(key, final.read_bytes(), content_type="video/mp4")
+    try:
+        return backend().presigned_get_url(key, expires_in=604800)
+    except Exception:
+        return key
+
+
+def assemble_byo(script: Script, audio_bytes: bytes, word_timings: list[dict],
+                 captions: bool = True) -> str | None:
+    """Bring-your-own-voice assembly: style-locked images spread evenly across the user's
+    recording, muxed over the ORIGINAL audio, with karaoke-style captions from word timings."""
+    work = Path(tempfile.mkdtemp(prefix="ghostreel_byo_"))
+    voice = work / "voice.mp3"
+    voice.write_bytes(audio_bytes)
+    audio_dur = _audio_duration(voice)
+
+    segs = [s for s in script.segments if s.image_url]
+    if not segs:
+        return None
+    n = len(segs)
+    per = audio_dur / n
+
+    clips: list[Path] = []
+    for i, seg in enumerate(segs):
+        img = work / f"img_{i}.png"
+        img.write_bytes(get_by_url(seg.image_url))
+        dur = per if i < n - 1 else max(0.1, audio_dur - per * (n - 1))
+        seg.duration_s = dur
+        clip = work / f"clip_{i}.mp4"
+        subprocess.run(
+            [*_FF, "-loop", "1", "-t", f"{dur:.3f}", "-i", str(img),
+             "-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,"
+                    f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS}",
+             "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(clip)],
+            check=True, timeout=300, capture_output=True,
+        )
+        clips.append(clip)
+
+    clip_list = work / "clips.txt"
+    clip_list.write_text("".join(f"file '{c.as_posix()}'\n" for c in clips))
+    concat = work / "concat.mp4"
+    subprocess.run(
+        [*_FF, "-f", "concat", "-safe", "0", "-i", str(clip_list), "-c", "copy", str(concat)],
+        check=True, timeout=300, capture_output=True,
+    )
+
+    # Mux the ORIGINAL recording + optionally burn karaoke captions (cwd=work keeps the
+    # subtitles filter path clean).
+    final = work / "final.mp4"
+    if captions and word_timings:
+        _build_word_srt(word_timings, work / "cap.srt")
+        subprocess.run(
+            [*_FF, "-i", "concat.mp4", "-i", "voice.mp3",
+             "-vf", f"subtitles=cap.srt:force_style='{_CAPTION_STYLE}'",
+             "-c:a", "aac", "-shortest", "final.mp4"],
+            check=True, timeout=600, capture_output=True, cwd=str(work),
+        )
+    else:
+        subprocess.run(
+            [*_FF, "-i", str(concat), "-i", str(voice),
+             "-c:v", "copy", "-c:a", "aac", "-shortest", str(final)],
+            check=True, timeout=300, capture_output=True,
+        )
+
     key = f"{settings.asset_prefix}/videos/{uuid.uuid4().hex}.mp4"
     backend().put(key, final.read_bytes(), content_type="video/mp4")
     try:

@@ -19,7 +19,7 @@ from datetime import date
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.config import VOICES, settings
@@ -181,6 +181,50 @@ def create_job(req: VideoRequest, x_access_code: str | None = Header(default=Non
             "qa": settings.qa_model,
             "tts": settings.tts_model,
             "voice_id": req.voice_id or settings.voice_id,
+        },
+    )
+    store.save(job)
+    runner.submit(job.job_id)
+    return {"job_id": job.job_id, "status": job.status.value}
+
+
+@app.post("/jobs/byo")
+async def create_byo_job(
+    audio: UploadFile = File(...),
+    topic: str = Form(""),
+    style_id: str = Form("doodle"),
+    segment_count: int = Form(6),
+    captions: bool = Form(True),
+    review: bool = Form(False),
+    x_access_code: str | None = Header(default=None),
+) -> dict:
+    """Bring-your-own-voice: upload a recording -> transcribe -> images over the original audio."""
+    _gate_job(x_access_code)
+    if not settings.assemblyai_api_key:
+        raise HTTPException(status_code=400, detail="BYO voice requires ASSEMBLYAI_API_KEY")
+
+    data = await audio.read()
+    ext = (audio.filename or "audio.mp3").rsplit(".", 1)[-1].lower()
+    if ext not in ("mp3", "wav", "m4a", "aac", "ogg", "webm", "mp4", "flac"):
+        ext = "mp3"
+    key = f"{settings.asset_prefix}/uploads/{uuid.uuid4().hex}.{ext}"
+    backend().put(key, data, content_type=audio.content_type or "audio/mpeg")
+
+    job = Job(
+        job_id=uuid.uuid4().hex,
+        topic=topic,
+        voice_mode="byo",
+        audio_key=key,
+        style_id=style_id,
+        style=get_preset(style_id),
+        segment_count=segment_count,
+        captions=captions,
+        review=review,
+        models={
+            "stt": settings.stt_model,
+            "script": settings.chat_model,
+            "image": settings.image_model,
+            "qa": settings.qa_model,
         },
     )
     store.save(job)

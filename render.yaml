@@ -20,6 +20,8 @@ services:
         sync: false
       - key: B2_BUCKET_NAME
         sync: false
+      - key: ASSEMBLYAI_API_KEY
+        sync: false
       # Rate gate — set a secret ACCESS_CODE so only people with the code can generate.
       - key: ACCESS_CODE
         sync: false
