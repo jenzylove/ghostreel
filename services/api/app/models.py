@@ -111,6 +111,7 @@ class Job(BaseModel):
 # --- API bodies ---
 class VideoRequest(BaseModel):
     topic: str
+    voice_mode: str = "tts"                 # "tts" | "byo" (byo generates a script, then you record it)
     style_id: str | None = None
     style_positive: str | None = None      # custom style (from a reference image) — overrides style_id
     style_negatives: str | None = None

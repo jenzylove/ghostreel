@@ -12,6 +12,7 @@ Jobs run in a background worker, persist state to B2 after every step, and resum
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -166,20 +167,22 @@ def create_job(req: VideoRequest, x_access_code: str | None = Header(default=Non
         style = get_preset(req.style_id)
         style_id = req.style_id or "doodle"
 
+    byo = req.voice_mode == "byo"
     job = Job(
         job_id=uuid.uuid4().hex,
         topic=req.topic,
+        voice_mode=req.voice_mode,
         style_id=style_id,
         style=style,
         segment_count=req.segment_count or settings.segment_count,
         voice_id=req.voice_id or settings.voice_id,
         captions=req.captions,
-        review=req.review,
+        review=req.review or byo,   # BYO always reviews the script, then records it
         models={
             "script": settings.chat_model,
             "image": settings.image_model,
             "qa": settings.qa_model,
-            "tts": settings.tts_model,
+            "tts": settings.tts_model if not byo else settings.stt_model,
             "voice_id": req.voice_id or settings.voice_id,
         },
     )
@@ -188,20 +191,34 @@ def create_job(req: VideoRequest, x_access_code: str | None = Header(default=Non
     return {"job_id": job.job_id, "status": job.status.value}
 
 
-@app.post("/jobs/byo")
-async def create_byo_job(
+@app.post("/jobs/{job_id}/record")
+async def record_job(
+    job_id: str,
     audio: UploadFile = File(...),
-    topic: str = Form(""),
-    style_id: str = Form("doodle"),
-    segment_count: int = Form(6),
-    captions: bool = Form(True),
-    review: bool = Form(False),
+    segments: str = Form(""),
     x_access_code: str | None = Header(default=None),
 ) -> dict:
-    """Bring-your-own-voice: upload a recording -> transcribe -> images over the original audio."""
-    _gate_job(x_access_code)
+    """BYO: after reviewing the script, upload your recording of it — then rendering starts."""
+    _require_code(x_access_code)
+    try:
+        job = store.load(job_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail=f"job not found: {job_id}") from e
+    if job.status != JobStatus.AWAITING_REVIEW or job.script is None:
+        raise HTTPException(status_code=409, detail=f"job {job_id} is not awaiting review")
+    if job.voice_mode != "byo":
+        raise HTTPException(status_code=400, detail="record is only for bring-your-own-voice jobs")
     if not settings.assemblyai_api_key:
         raise HTTPException(status_code=400, detail="BYO voice requires ASSEMBLYAI_API_KEY")
+
+    # Apply any script edits made in the review panel.
+    if segments:
+        by_index = {s.index: s for s in job.script.segments}
+        for edit in json.loads(segments):
+            seg = by_index.get(edit.get("index"))
+            if seg:
+                seg.narration = edit.get("narration", seg.narration)
+                seg.visual = edit.get("visual", seg.visual)
 
     data = await audio.read()
     ext = (audio.filename or "audio.mp3").rsplit(".", 1)[-1].lower()
@@ -210,23 +227,11 @@ async def create_byo_job(
     key = f"{settings.asset_prefix}/uploads/{uuid.uuid4().hex}.{ext}"
     backend().put(key, data, content_type=audio.content_type or "audio/mpeg")
 
-    job = Job(
-        job_id=uuid.uuid4().hex,
-        topic=topic,
-        voice_mode="byo",
-        audio_key=key,
-        style_id=style_id,
-        style=get_preset(style_id),
-        segment_count=segment_count,
-        captions=captions,
-        review=review,
-        models={
-            "stt": settings.stt_model,
-            "script": settings.chat_model,
-            "image": settings.image_model,
-            "qa": settings.qa_model,
-        },
-    )
+    job.audio_key = key
+    job.word_timings = []          # runner transcribes in the background
+    job.approved = True
+    job.status = JobStatus.PENDING
+    job.step = "queued"
     store.save(job)
     runner.submit(job.job_id)
     return {"job_id": job.job_id, "status": job.status.value}
@@ -302,6 +307,7 @@ def job_media(job_id: str) -> dict:
         "error": job.error,
         "models": job.models,
         "style_id": job.style_id,
+        "voice_mode": job.voice_mode,
         "video": _view(job.video_url),
         "segments": segments,
     }

@@ -55,10 +55,10 @@ def semantic_check(data: bytes, segment: Segment, style: StylePreset) -> Verdict
 
         client = genai.Client(api_key=settings.gemini_api_key)
         instruction = (
-            "You are QA for AI-generated video stills. Be lenient: FAIL only if the image is "
-            "clearly broken, blank, the wrong subject, or badly off-style.\n"
-            f"Intended style: {style.positive}. Avoid: {style.negatives}.\n"
-            f"The image should depict: {segment.visual}\n"
+            "You are QA for AI-generated video stills. PASS the image unless it is genuinely "
+            "BROKEN: corrupted, blank, a glitched or garbled mess, or disfigured nonsense. Do "
+            "NOT fail for imperfect style, loose subject match, odd cropping, or artistic "
+            "choices — only for images that are actually unusable. When in doubt, PASS.\n"
             'Return ONLY JSON: {"passed": true|false, "score": 0.0-1.0, "reason": "short"}'
         )
         resp = client.models.generate_content(

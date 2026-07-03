@@ -38,6 +38,7 @@
     .qa { font-size:11px; display:flex; align-items:center; gap:6px; color:var(--muted); }
     .qa .k { padding:2px 8px; border-radius:999px; font-weight:600; }
     .qa .pass { background:rgba(34,197,94,.15); color:#4ade80; } .qa .fail { background:rgba(239,68,68,.15); color:#f87171; }
+    .qa .regen { background:rgba(245,158,11,.15); color:#f59e0b; }
     details { margin-top:8px; } summary { cursor:pointer; color:var(--muted); font-size:12px; }
     .prov { font-size:11px; color:var(--muted); white-space:pre-wrap; margin-top:6px; }
     video { width:100%; border-radius:14px; border:1px solid var(--line); margin-top:6px; }
@@ -63,10 +64,10 @@
       <span id="refStatus" class="badge" style="display:none"></span>
       <label>Mode <select id="mode"><option value="tts">AI voice</option><option value="byo">My recording</option></select></label>
       <label id="voiceWrap">Voice <select id="voice"></select></label>
-      <label id="audioWrap" style="display:none">Recording <input type="file" id="audio" accept="audio/*" /></label>
       <label>Segments <input type="number" id="segments" min="3" max="12" value="6" /></label>
       <label><input type="checkbox" id="captions" checked /> Captions</label>
-      <label><input type="checkbox" id="review" checked /> Review script before rendering</label>
+      <label><input type="checkbox" id="review" checked /> Review</label>
+      <label><input type="checkbox" id="prov" /> Show provenance</label>
       <label id="codeWrap" style="display:none">Access code <input type="password" id="code" style="width:120px" /></label>
     </div>
 
@@ -78,7 +79,8 @@
     </div>
 
     <div id="reviewbar" class="reviewbar" style="display:none">
-      <span>Review & edit the script below, then render (images + voice cost money — this is your chance to fix it first).</span>
+      <span id="reviewMsg">Review &amp; edit the script below, then render.</span>
+      <span id="recordWrap" style="display:none">Your recording: <input type="file" id="recording" accept="audio/*" /></span>
       <button id="approve">Approve &amp; Render</button>
     </div>
 
@@ -93,7 +95,7 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    let timer = null, currentJob = null, reviewing = false;
+    let timer = null, currentJob = null, reviewing = false, currentMode = "tts";
 
     const codeVal = () => localStorage.getItem("ghostreel_code") || "";
     const jsonHeaders = () => ({ "content-type": "application/json", "X-Access-Code": codeVal() });
@@ -117,41 +119,26 @@
     }
 
     async function start() {
-      const byo = $("mode").value === "byo";
       const topic = $("topic").value.trim();
-      if (byo) {
-        if (!$("audio").files.length) { alert("Choose an audio recording first"); return; }
-      } else if (!topic) { return; }
-
+      if (!topic) return;
       $("go").disabled = true; reviewing = false;
       $("grid").innerHTML = ""; $("result").style.display = "none"; $("reviewbar").style.display = "none";
       $("statusRow").style.display = "flex"; $("step").textContent = "queued";
       try {
-        let r;
-        if (byo) {
-          const fd = new FormData();
-          fd.append("audio", $("audio").files[0]);
-          fd.append("topic", topic);
-          fd.append("style_id", $("style").value);
-          fd.append("segment_count", String(parseInt($("segments").value) || 6));
-          fd.append("captions", $("captions").checked ? "true" : "false");
-          fd.append("review", $("review").checked ? "true" : "false");
-          r = await fetch("/jobs/byo", { method: "POST", headers: { "X-Access-Code": codeVal() }, body: fd });
-        } else {
-          const payload = {
-            topic,
-            style_id: $("style").value,
-            voice_id: $("voice").value,
-            segment_count: parseInt($("segments").value) || 6,
-            captions: $("captions").checked,
-            review: $("review").checked
-          };
-          if ($("style").value === "custom" && window.customStyle) {
-            payload.style_positive = window.customStyle.positive;
-            payload.style_negatives = window.customStyle.negatives;
-          }
-          r = await fetch("/jobs", { method: "POST", headers: jsonHeaders(), body: JSON.stringify(payload) });
+        const payload = {
+          topic,
+          voice_mode: $("mode").value,
+          style_id: $("style").value,
+          voice_id: $("voice").value,
+          segment_count: parseInt($("segments").value) || 6,
+          captions: $("captions").checked,
+          review: $("review").checked
+        };
+        if ($("style").value === "custom" && window.customStyle) {
+          payload.style_positive = window.customStyle.positive;
+          payload.style_negatives = window.customStyle.negatives;
         }
+        const r = await fetch("/jobs", { method: "POST", headers: jsonHeaders(), body: JSON.stringify(payload) });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
           $("step").textContent = r.status === 401 ? "access code required or invalid"
@@ -182,7 +169,16 @@
       if (d.retries > 0) { $("healBadge").style.display = ""; $("healBadge").textContent = "⟳ " + d.retries + " self-healed"; }
 
       reviewing = (st === "awaiting_review");
+      currentMode = d.voice_mode || "tts";
       $("reviewbar").style.display = reviewing ? "flex" : "none";
+      if (reviewing) {
+        const byo = currentMode === "byo";
+        $("recordWrap").style.display = byo ? "inline" : "none";
+        $("approve").textContent = byo ? "Record & Render" : "Approve & Render";
+        $("reviewMsg").textContent = byo
+          ? "Review & edit the script, record yourself reading it, then upload to render:"
+          : "Review & edit the script below, then render.";
+      }
       renderSegments(d.segments || [], reviewing);
 
       if (st === "done" || st === "failed") {
@@ -196,40 +192,50 @@
     }
 
     function renderSegments(segs, editable) {
+      const showProv = $("prov").checked;
       $("grid").innerHTML = segs.map(s => {
-        const media = editable ? "" : (s.image
-          ? `<img src="${s.image}" alt="segment ${s.index}" />`
-          : `<div class="ph">${s.qa_passed === false ? "generating…" : "…"}</div>`);
-        const body = editable
-          ? `<div class="body" data-idx="${s.index}">
+        if (editable) {
+          return `<div class="seg"><div class="body" data-idx="${s.index}">
                <textarea rows="3" class="ed-narr">${escapeHtml(s.narration||"")}</textarea>
                <input class="vis ed-vis" value="${escapeAttr(s.visual||"")}" placeholder="visual" />
-             </div>`
-          : `<div class="body">
-               <p class="narr">${escapeHtml(s.narration || "")}</p>
-               ${s.qa_passed == null ? "" : `<div class="qa"><span class="k ${s.qa_passed?"pass":"fail"}">${s.qa_passed?"QA pass":"QA fail"}</span>${s.attempts>1?`<span>· ${s.attempts} tries</span>`:""}</div>`}
-               <details><summary>provenance</summary><div class="prov">prompt: ${escapeHtml(s.image_prompt || s.visual || "")}${s.qa_reason ? "\nqa: " + escapeHtml(s.qa_reason) : ""}</div></details>
-             </div>`;
-        return `<div class="seg">${media}${body}</div>`;
+             </div></div>`;
+        }
+        const media = s.image
+          ? `<img src="${s.image}" alt="segment ${s.index}" />`
+          : `<div class="ph">${s.attempts > 1 ? "regenerating…" : "…"}</div>`;
+        const regen = s.attempts > 1 ? `<div class="qa"><span class="k regen">⟳ regenerated</span></div>` : "";
+        const prov = showProv
+          ? `<details><summary>provenance</summary><div class="prov">prompt: ${escapeHtml(s.image_prompt || s.visual || "")}${s.qa_reason ? "\nqa: " + escapeHtml(s.qa_reason) : ""}</div></details>`
+          : "";
+        return `<div class="seg">${media}
+          <div class="body"><p class="narr">${escapeHtml(s.narration || "")}</p>${regen}${prov}</div></div>`;
       }).join("");
     }
 
     async function approve() {
       if (!currentJob) return;
-      $("approve").disabled = true;
       const segments = [...document.querySelectorAll(".seg .body[data-idx]")].map(b => ({
         index: parseInt(b.dataset.idx),
         narration: b.querySelector(".ed-narr").value,
         visual: b.querySelector(".ed-vis").value
       }));
-      try {
-        await fetch(`/jobs/${currentJob}/approve`, {
-          method: "POST", headers: jsonHeaders(),
-          body: JSON.stringify({ segments })
-        });
-        $("reviewbar").style.display = "none"; $("approve").disabled = false;
-        watch(currentJob);
-      } catch { $("approve").disabled = false; }
+      if (currentMode === "byo") {
+        if (!$("recording").files.length) { alert("Upload your recording of the script first"); return; }
+        $("approve").disabled = true;
+        const fd = new FormData();
+        fd.append("audio", $("recording").files[0]);
+        fd.append("segments", JSON.stringify(segments));
+        try {
+          await fetch(`/jobs/${currentJob}/record`, { method: "POST", headers: { "X-Access-Code": codeVal() }, body: fd });
+          $("reviewbar").style.display = "none"; $("approve").disabled = false; watch(currentJob);
+        } catch { $("approve").disabled = false; }
+      } else {
+        $("approve").disabled = true;
+        try {
+          await fetch(`/jobs/${currentJob}/approve`, { method: "POST", headers: jsonHeaders(), body: JSON.stringify({ segments }) });
+          $("reviewbar").style.display = "none"; $("approve").disabled = false; watch(currentJob);
+        } catch { $("approve").disabled = false; }
+      }
     }
 
     function escapeHtml(t){ const d=document.createElement("div"); d.textContent=t; return d.innerHTML; }
@@ -242,7 +248,7 @@
     $("mode").addEventListener("change", () => {
       const byo = $("mode").value === "byo";
       $("voiceWrap").style.display = byo ? "none" : "flex";
-      $("audioWrap").style.display = byo ? "flex" : "none";
+      if (byo) $("review").checked = true;   // BYO always reviews the script, then you record
     });
 
     $("style").addEventListener("change", () => {
