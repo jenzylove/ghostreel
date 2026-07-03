@@ -130,6 +130,8 @@ def run_job(job_id: str) -> None:  # noqa: C901
             job.step = "voice"
             store.save(job)
             job.script.audio_url = generate_voice_full(job.script.narration, voice_id=voice_id)
+            if not job.script.audio_url:
+                raise RuntimeError("TTS returned no audio — check ELEVEN_API_KEY and voice_id")
             store.save(job)
 
         # 3. Word-level timings (AssemblyAI on the full audio).

@@ -26,7 +26,10 @@ def transcribe_url(audio_url: str, model: str | None = None) -> dict:
         .run()
     )
     run_obj = out[0] if isinstance(out, tuple) else getattr(out, "run", out)
-    asset = run_obj.steps[0].assets[0]
+    assets = run_obj.steps[0].assets
+    if not assets:
+        raise RuntimeError("AssemblyAI returned no assets — pipeline failed (check audio URL and API key)")
+    asset = assets[0]
 
     words = []
     audio_meta = getattr(asset, "audio", None)
