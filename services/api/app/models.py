@@ -104,6 +104,11 @@ class Job(BaseModel):
     captions: bool = True                 # burn segment-level captions into the final video
     review: bool = False                  # pause after script for human approval/edit
     approved: bool = False
+    # Phase 5: YouTube upload package
+    yt_title: str | None = None
+    yt_description: str | None = None
+    yt_tags: list[str] = []
+    thumbnail_url: str | None = None
     created_at: str = Field(default_factory=_now)
     updated_at: str = Field(default_factory=_now)
 

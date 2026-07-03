@@ -17,6 +17,7 @@ from app.config import settings
 from app.jobs import store
 from app.models import JobStatus
 from app.pipeline.assemble import assemble_byo, assemble_video
+from app.pipeline.metadata import generate_thumbnail, generate_yt_metadata
 from app.pipeline.script import generate_script
 from app.pipeline.style import DEFAULT_STYLE
 from app.pipeline.transcribe import transcribe_url
@@ -56,14 +57,24 @@ def run_job(job_id: str) -> None:
             job.script = generate_script(job.topic, n=job.segment_count)
             store.save(job)
 
-        # 1b. Review gate: pause for approval. BYO pauses here to collect the recording too.
+        # 1b. YouTube metadata: generated right after script so it's visible during review.
+        if job.script and job.yt_title is None:
+            job.step = "metadata"
+            store.save(job)
+            meta = generate_yt_metadata(job.script)
+            job.yt_title = meta["title"]
+            job.yt_description = meta["description"]
+            job.yt_tags = meta["tags"]
+            store.save(job)
+
+        # 1c. Review gate: pause for approval. BYO pauses here to collect the recording too.
         if job.review and not job.approved:
             job.status = JobStatus.AWAITING_REVIEW
             job.step = "awaiting review"
             store.save(job)
             return
 
-        # 1c. BYO: transcribe the uploaded recording (background) for word-level timings.
+        # 1d. BYO: transcribe the uploaded recording (background) for word-level timings.
         if byo and job.audio_key and not job.word_timings:
             job.step = "transcribe"
             store.save(job)
@@ -87,7 +98,14 @@ def run_job(job_id: str) -> None:
                 seg.audio_url = generate_voice(seg.narration, voice_id=voice_id)
                 store.save(job)
 
-        # 3. Assemble.
+        # 3. Thumbnail: one extra Imagen call before final assembly (adds to Genblaze tally).
+        if not job.thumbnail_url:
+            job.step = "thumbnail"
+            store.save(job)
+            job.thumbnail_url = generate_thumbnail(job.topic, preset)
+            store.save(job)
+
+        # 4. Assemble.
         if not job.video_url:
             job.step = "assemble"
             store.save(job)

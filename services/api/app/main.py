@@ -310,4 +310,9 @@ def job_media(job_id: str) -> dict:
         "voice_mode": job.voice_mode,
         "video": _view(job.video_url),
         "segments": segments,
+        # Phase 5: YouTube upload package
+        "yt_title": job.yt_title,
+        "yt_description": job.yt_description,
+        "yt_tags": job.yt_tags,
+        "thumbnail": _view(job.thumbnail_url),
     }

@@ -46,6 +46,25 @@
     .reviewbar { display:flex; align-items:center; justify-content:space-between; gap:14px; border-color:rgba(245,158,11,.35); }
     a.dl { display:inline-block; margin-top:10px; color:var(--violet); font-weight:600; text-decoration:none; font-size:14px; }
     .models { font-size:11px; color:var(--muted); margin-top:8px; }
+    /* YouTube package */
+    .ytpkg { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:22px; }
+    .ytpkg-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .ytpkg-title { font-size:13px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+    .ytpkg-layout { display:grid; grid-template-columns:160px 1fr; gap:16px; }
+    @media(max-width:600px){ .ytpkg-layout { grid-template-columns:1fr; } }
+    .ytpkg-thumb { width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px; border:1px solid var(--line); background:#0e0e16; display:block; }
+    .ytpkg-thumb-ph { width:100%; aspect-ratio:16/9; border-radius:8px; background:#0e0e16; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; }
+    .ytpkg-fields { display:flex; flex-direction:column; gap:10px; }
+    .ytfield { display:flex; flex-direction:column; gap:4px; }
+    .ytfield-label { font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+    .ytfield-val { font-size:13px; color:#d4d4dc; background:#0a0a0f; border:1px solid #2a2a38; border-radius:8px; padding:8px 10px; white-space:pre-wrap; line-height:1.5; }
+    .ytfield-row { display:flex; align-items:flex-start; gap:8px; }
+    .ytfield-row .ytfield { flex:1; }
+    .tags { display:flex; flex-wrap:wrap; gap:6px; }
+    .tag { font-size:12px; background:#1a1a26; border:1px solid #2a2a38; border-radius:999px; padding:3px 10px; color:#b7b7c4; }
+    .copy-btn { background:none; border:1px solid #2a2a38; color:var(--muted); font-size:12px; padding:4px 10px; border-radius:8px; cursor:pointer; white-space:nowrap; flex-shrink:0; }
+    .copy-btn:hover { border-color:var(--violet); color:#fff; }
+    .copy-btn.copied { border-color:#22c55e; color:#4ade80; }
   </style>
 </head>
 <body>
@@ -90,6 +109,41 @@
       <div class="models" id="models"></div>
     </div>
 
+    <div id="ytpkg" class="ytpkg" style="display:none">
+      <div class="ytpkg-header">
+        <span class="ytpkg-title">YouTube Package</span>
+        <button class="copy-btn" id="copyAll" onclick="copyAllYt()">Copy all ↗</button>
+      </div>
+      <div class="ytpkg-layout">
+        <div id="thumbWrap">
+          <div class="ytpkg-thumb-ph" id="thumbPh">generating…</div>
+        </div>
+        <div class="ytpkg-fields">
+          <div class="ytfield-row">
+            <div class="ytfield">
+              <div class="ytfield-label">Title</div>
+              <div class="ytfield-val" id="ytTitle">—</div>
+            </div>
+            <button class="copy-btn" onclick="copyField('ytTitle')">Copy</button>
+          </div>
+          <div class="ytfield-row">
+            <div class="ytfield">
+              <div class="ytfield-label">Description</div>
+              <div class="ytfield-val" id="ytDesc">—</div>
+            </div>
+            <button class="copy-btn" onclick="copyField('ytDesc')">Copy</button>
+          </div>
+          <div class="ytfield-row">
+            <div class="ytfield">
+              <div class="ytfield-label">Tags</div>
+              <div class="tags" id="ytTags"></div>
+            </div>
+            <button class="copy-btn" onclick="copyTags()">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="grid" class="grid"></div>
   </div>
 
@@ -122,7 +176,7 @@
       const topic = $("topic").value.trim();
       if (!topic) return;
       $("go").disabled = true; reviewing = false;
-      $("grid").innerHTML = ""; $("result").style.display = "none"; $("reviewbar").style.display = "none";
+      $("grid").innerHTML = ""; $("result").style.display = "none"; $("reviewbar").style.display = "none"; $("ytpkg").style.display = "none";
       $("statusRow").style.display = "flex"; $("step").textContent = "queued";
       try {
         const payload = {
@@ -188,6 +242,7 @@
           $("video").src = d.video; $("dl").href = d.video;
           if (d.models) $("models").textContent = "models · " + Object.entries(d.models).map(([k,v])=>k+": "+v).join("  ·  ");
         }
+        renderYtPackage(d);
       }
     }
 
@@ -236,6 +291,46 @@
           $("reviewbar").style.display = "none"; $("approve").disabled = false; watch(currentJob);
         } catch { $("approve").disabled = false; }
       }
+    }
+
+    function renderYtPackage(d) {
+      const hasYt = d.yt_title || d.yt_description || (d.yt_tags && d.yt_tags.length);
+      if (!hasYt) { $("ytpkg").style.display = "none"; return; }
+      $("ytpkg").style.display = "block";
+      $("ytTitle").textContent = d.yt_title || "";
+      $("ytDesc").textContent = d.yt_description || "";
+      $("ytTags").innerHTML = (d.yt_tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("");
+      const tw = $("thumbWrap");
+      if (d.thumbnail) {
+        tw.innerHTML = `<img class="ytpkg-thumb" src="${d.thumbnail}" alt="thumbnail" />`;
+      } else {
+        tw.innerHTML = `<div class="ytpkg-thumb-ph" id="thumbPh">generating…</div>`;
+      }
+    }
+
+    function copyField(id) {
+      const el = $(id); if (!el) return;
+      navigator.clipboard.writeText(el.textContent).then(() => flashCopy(event.target));
+    }
+
+    function copyTags() {
+      const tags = [...$("ytTags").querySelectorAll(".tag")].map(t => t.textContent).join(", ");
+      navigator.clipboard.writeText(tags).then(() => flashCopy(event.target));
+    }
+
+    function copyAllYt() {
+      const title = $("ytTitle").textContent;
+      const desc = $("ytDesc").textContent;
+      const tags = [...$("ytTags").querySelectorAll(".tag")].map(t => t.textContent).join(", ");
+      const full = `Title:\n${title}\n\nDescription:\n${desc}\n\nTags:\n${tags}`;
+      navigator.clipboard.writeText(full).then(() => flashCopy($("copyAll")));
+    }
+
+    function flashCopy(btn) {
+      if (!btn) return;
+      const orig = btn.textContent;
+      btn.textContent = "Copied ✓"; btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove("copied"); }, 1800);
     }
 
     function escapeHtml(t){ const d=document.createElement("div"); d.textContent=t; return d.innerHTML; }
