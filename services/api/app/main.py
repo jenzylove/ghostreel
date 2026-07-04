@@ -115,6 +115,8 @@ def voices() -> list[dict]:
         r.raise_for_status()
         out = []
         for v in r.json().get("voices", []):
+            if v.get("category") not in ("premade", None):
+                continue  # skip cloned/professional voices — they 401 on most plans
             gender = (v.get("labels") or {}).get("gender")
             name = v["name"] + (f" ({gender})" if gender else "")
             out.append({"name": name, "id": v["voice_id"]})
