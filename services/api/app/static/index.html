@@ -67,6 +67,8 @@
     .copy-btn { background:none; border:1px solid #2a2a38; color:var(--muted); font-size:12px; padding:4px 10px; border-radius:8px; cursor:pointer; white-space:nowrap; flex-shrink:0; }
     .copy-btn:hover { border-color:var(--violet); color:#fff; }
     .copy-btn.copied { border-color:#22c55e; color:#4ade80; }
+    .dl-btn { display:inline-block; background:var(--violet); color:#fff; font-weight:600; font-size:13px; padding:5px 14px; border-radius:9px; text-decoration:none; white-space:nowrap; }
+    .dl-btn:hover { opacity:.85; }
   </style>
 </head>
 <body>
@@ -120,14 +122,16 @@
 
     <div id="result" class="result" style="display:none">
       <video id="video" controls></video>
-      <a class="dl" id="dl" href="#" download>Download MP4 ↓</a>
       <div class="models" id="models"></div>
     </div>
 
     <div id="ytpkg" class="ytpkg" style="display:none">
       <div class="ytpkg-header">
         <span class="ytpkg-title">YouTube Package</span>
-        <button class="copy-btn" id="copyAll" onclick="copyAllYt()">Copy all ↗</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <a id="dl" class="dl-btn" style="display:none" href="#">Download MP4 ↓</a>
+          <button class="copy-btn" id="copyAll" onclick="copyAllYt()">Copy all ↗</button>
+        </div>
       </div>
       <div class="ytpkg-layout">
         <div id="thumbWrap">
@@ -196,6 +200,7 @@
       $("result").style.display = "none";
       $("reviewbar").style.display = "none";
       $("ytpkg").style.display = "none";
+      $("dl").style.display = "none";
       $("statusRow").style.display = "flex";
       $("step").textContent = "queued";
       $("narration-edit").value = "";
@@ -267,8 +272,12 @@
         clearInterval(timer); timer = null; $("go").disabled = false;
         if (d.video) {
           $("result").style.display = "block";
-          $("video").src = d.video; $("dl").href = d.video;
+          $("video").src = d.video;
           if (d.models) $("models").textContent = "models · " + Object.entries(d.models).map(([k,v])=>k+": "+v).join("  ·  ");
+          // Download via server proxy so Content-Disposition attachment works cross-origin.
+          const dl = $("dl");
+          dl.href = `/jobs/${id}/download`;
+          dl.style.display = "inline-block";
         }
         renderYtPackage(d);
       }

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from app.config import VOICES, settings
 from app.jobs import runner, store
@@ -251,6 +251,25 @@ def approve_job(
     store.save(job)
     runner.submit(job.job_id)
     return {"job_id": job.job_id, "status": job.status.value}
+
+
+@app.get("/jobs/{job_id}/download")
+def download_video(job_id: str) -> StreamingResponse:
+    """Proxy the finished video through the server so the browser can download it."""
+    try:
+        job = store.load(job_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail=f"job not found: {job_id}") from e
+    if not job.video_url:
+        raise HTTPException(status_code=404, detail="no video yet for this job")
+    data = get_by_url(job.video_url)
+    slug = job.topic[:40].replace(" ", "-").lower() if job.topic else job_id[:8]
+    filename = f"ghostreel-{slug}.mp4"
+    return StreamingResponse(
+        iter([data]),
+        media_type="video/mp4",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/jobs/{job_id}", response_model=Job)

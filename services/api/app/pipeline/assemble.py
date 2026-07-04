@@ -115,13 +115,13 @@ def assemble_slideshow(script: Script, audio_bytes: bytes, captions: bool = True
         subprocess.run(
             [*_FF, "-i", "concat.mp4", "-i", "audio.mp3",
              "-vf", f"subtitles=cap.srt:force_style='{_CAPTION_STYLE}'",
-             "-c:a", "aac", "-shortest", "final.mp4"],
+             "-c:a", "aac", "-shortest", "-movflags", "+faststart", "final.mp4"],
             check=True, timeout=900, capture_output=True, cwd=str(work),
         )
     else:
         subprocess.run(
             [*_FF, "-i", str(concat), "-i", str(audio_path),
-             "-c:v", "copy", "-c:a", "aac", "-shortest", str(final)],
+             "-c:v", "copy", "-c:a", "aac", "-shortest", "-movflags", "+faststart", str(final)],
             check=True, timeout=600, capture_output=True,
         )
 
