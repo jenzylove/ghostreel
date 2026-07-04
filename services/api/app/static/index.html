@@ -69,6 +69,24 @@
     .copy-btn.copied { border-color:#22c55e; color:#4ade80; }
     .dl-btn { display:inline-block; background:var(--violet); color:#fff; font-weight:600; font-size:13px; padding:5px 14px; border-radius:9px; text-decoration:none; white-space:nowrap; }
     .dl-btn:hover { opacity:.85; }
+    /* History */
+    .history { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 18px; margin-bottom:22px; }
+    .history-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .history-label { font-size:13px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+    .hist-empty { font-size:13px; color:var(--muted); padding:4px 0; }
+    .hist-item { display:flex; align-items:center; gap:10px; padding:9px 6px; border-bottom:1px solid var(--line); cursor:pointer; border-radius:8px; transition:background .15s; }
+    .hist-item:last-child { border-bottom:none; }
+    .hist-item:hover { background:rgba(139,92,246,.08); }
+    .hist-dot { width:8px; height:8px; border-radius:50%; background:var(--violet); flex-shrink:0; animation:pulse 1.3s infinite; }
+    .hist-dot.done { background:#22c55e; animation:none; }
+    .hist-dot.failed { background:#ef4444; animation:none; }
+    .hist-dot.awaiting_review { background:#f59e0b; animation:none; }
+    .hist-topic { flex:1; font-size:13px; color:#d4d4dc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .hist-meta { font-size:11px; color:var(--muted); white-space:nowrap; display:flex; gap:8px; align-items:center; }
+    .hist-status { font-size:11px; padding:2px 7px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+    .hist-status.done { border-color:rgba(34,197,94,.3); color:#4ade80; }
+    .hist-status.failed { border-color:rgba(239,68,68,.3); color:#f87171; }
+    .hist-status.awaiting_review { border-color:rgba(245,158,11,.3); color:#fbbf24; }
   </style>
 </head>
 <body>
@@ -99,6 +117,14 @@
       <label><input type="checkbox" id="review" checked /> Review</label>
       <label><input type="checkbox" id="prov" /> Show provenance</label>
       <label id="codeWrap" style="display:none">Access code <input type="password" id="code" style="width:120px" /></label>
+    </div>
+
+    <div id="historySection" class="history" style="display:none">
+      <div class="history-hdr">
+        <span class="history-label">Your Videos</span>
+        <button class="copy-btn" onclick="loadHistory()">Refresh</button>
+      </div>
+      <div id="historyList"></div>
     </div>
 
     <div id="statusRow" class="status" style="display:none">
@@ -172,7 +198,20 @@
     let _narrationPopulated = false;
 
     const codeVal = () => localStorage.getItem("ghostreel_code") || "";
-    const jsonHeaders = () => ({ "content-type": "application/json", "X-Access-Code": codeVal() });
+
+    // Anonymous session — stable UUID per browser, no login required.
+    const sessionId = () => {
+      let id = localStorage.getItem("gr_uid");
+      if (!id) { id = crypto.randomUUID(); localStorage.setItem("gr_uid", id); }
+      return id;
+    };
+
+    const jsonHeaders = () => ({
+      "content-type": "application/json",
+      "X-Access-Code": codeVal(),
+      "X-Session-Id": sessionId(),
+    });
+    const baseHeaders = () => ({ "X-Access-Code": codeVal(), "X-Session-Id": sessionId() });
 
     async function loadOptions() {
       try {
@@ -280,6 +319,7 @@
           dl.style.display = "inline-block";
         }
         renderYtPackage(d);
+        loadHistory(); // refresh history so this job's final status shows
       }
     }
 
@@ -321,7 +361,7 @@
         fd.append("audio", $("recording").files[0]);
         if (narration) fd.append("narration", narration);
         try {
-          await fetch(`/jobs/${currentJob}/record`, { method: "POST", headers: { "X-Access-Code": codeVal() }, body: fd });
+          await fetch(`/jobs/${currentJob}/record`, { method: "POST", headers: baseHeaders(), body: fd });
           $("reviewbar").style.display = "none"; $("approve").disabled = false; watch(currentJob);
         } catch { $("approve").disabled = false; }
       } else {
@@ -375,6 +415,59 @@
 
     function escapeHtml(t) { const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
 
+    // --- History ---
+    function fmtAgo(iso) {
+      const diff = Date.now() - new Date(iso).getTime();
+      const m = Math.floor(diff / 60000);
+      if (m < 1) return "just now";
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ago`;
+      return `${Math.floor(h / 24)}d ago`;
+    }
+
+    function renderHistory(jobs) {
+      const section = $("historySection"), list = $("historyList");
+      if (!jobs.length) { section.style.display = "none"; return; }
+      section.style.display = "block";
+      list.innerHTML = jobs.map(j => {
+        const st = j.status;
+        const dotCls = ["done","failed","awaiting_review"].includes(st) ? st : "";
+        const badgeCls = ["done","failed","awaiting_review"].includes(st) ? st : "";
+        const label = st === "awaiting_review" ? "review" : st;
+        return `<div class="hist-item" onclick="loadHistoryJob('${j.job_id}')">
+          <span class="hist-dot ${dotCls}"></span>
+          <span class="hist-topic">${escapeHtml(j.topic)}</span>
+          <span class="hist-meta">
+            <span class="hist-status ${badgeCls}">${label}</span>
+            <span>${fmtAgo(j.created_at)}</span>
+          </span>
+        </div>`;
+      }).join("");
+    }
+
+    async function loadHistory() {
+      try {
+        const r = await fetch("/jobs", { headers: { "X-Session-Id": sessionId(), "X-Access-Code": codeVal() } });
+        if (!r.ok) return;
+        renderHistory(await r.json());
+      } catch {}
+    }
+
+    function loadHistoryJob(job_id) {
+      if (timer) clearInterval(timer);
+      currentJob = job_id; _narrationPopulated = false;
+      $("statusRow").style.display = "flex";
+      $("result").style.display = "none";
+      $("reviewbar").style.display = "none";
+      $("ytpkg").style.display = "none";
+      $("dl").style.display = "none";
+      $("grid").innerHTML = "";
+      $("go").disabled = false;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      watch(job_id);
+    }
+
     $("go").addEventListener("click", start);
     $("topic").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
     $("approve").addEventListener("click", approve);
@@ -395,12 +488,13 @@
       const fd = new FormData();
       for (const f of $("ref").files) fd.append("files", f);
       try {
-        window.customStyle = await (await fetch("/style/extract", { method:"POST", headers: {"X-Access-Code": codeVal()}, body: fd })).json();
+        window.customStyle = await (await fetch("/style/extract", { method:"POST", headers: baseHeaders(), body: fd })).json();
         $("refStatus").textContent = "✓ style captured";
       } catch { $("refStatus").textContent = "extraction failed"; }
     });
 
     loadOptions();
+    loadHistory();
 
     const preload = new URLSearchParams(location.search).get("job");
     if (preload) { $("statusRow").style.display = "flex"; currentJob = preload; watch(preload); }

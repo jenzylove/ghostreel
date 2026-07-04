@@ -148,8 +148,20 @@ def generate(req: GenerateRequest, x_access_code: str | None = Header(default=No
     return GenerateResponse(**generate_image(req.prompt))
 
 
+@app.get("/jobs")
+def list_jobs(x_session_id: str | None = Header(default=None)) -> list[dict]:
+    """Return the current session's job history — lightweight summaries, no full scan."""
+    if not x_session_id:
+        return []
+    return store.list_by_session(x_session_id)
+
+
 @app.post("/jobs")
-def create_job(req: VideoRequest, x_access_code: str | None = Header(default=None)) -> dict:
+def create_job(
+    req: VideoRequest,
+    x_access_code: str | None = Header(default=None),
+    x_session_id: str | None = Header(default=None),
+) -> dict:
     """Enqueue a video job. Returns immediately with the job id."""
     _gate_job(x_access_code)
 
@@ -171,6 +183,7 @@ def create_job(req: VideoRequest, x_access_code: str | None = Header(default=Non
         voice_id=req.voice_id or settings.voice_id,
         captions=req.captions,
         review=req.review or byo,
+        user_id=x_session_id or "",
         models={
             "script": settings.chat_model,
             "image": settings.image_model,
@@ -180,6 +193,7 @@ def create_job(req: VideoRequest, x_access_code: str | None = Header(default=Non
         },
     )
     store.save(job)
+    store.update_session_index(job)
     runner.submit(job.job_id)
     return {"job_id": job.job_id, "status": job.status.value}
 

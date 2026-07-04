@@ -129,6 +129,7 @@ def run_job(job_id: str) -> None:  # noqa: C901
             job.status = JobStatus.AWAITING_REVIEW
             job.step = "awaiting review"
             store.save(job)
+            store.update_session_index(job)
             return
 
         # 2. Audio.
@@ -200,11 +201,13 @@ def run_job(job_id: str) -> None:  # noqa: C901
         job.status = JobStatus.DONE
         job.step = "done"
         store.save(job)
+        store.update_session_index(job)
 
     except Exception as e:  # noqa: BLE001
         job.status = JobStatus.FAILED
         job.error = f"{type(e).__name__}: {e}"
         store.save(job)
+        store.update_session_index(job)
         raise
 
 

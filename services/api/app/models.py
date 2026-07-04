@@ -111,6 +111,8 @@ class Job(BaseModel):
     yt_description: str | None = None
     yt_tags: list[str] = []
     thumbnail_url: str | None = None
+    # Anonymous session (localStorage UUID) — links jobs to a browser without requiring login
+    user_id: str = ""
     created_at: str = Field(default_factory=_now)
     updated_at: str = Field(default_factory=_now)
 
