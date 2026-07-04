@@ -167,7 +167,11 @@ async def style_extract(
     try:
         preset = extract_style_preset(images)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"style extraction failed: {e}") from e
+        logging.exception("style extraction failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Couldn't read a style from those images — try clearer reference images",
+        ) from e
     return {"positive": preset.positive, "negatives": preset.negatives}
 
 
@@ -369,3 +373,21 @@ def job_media(job_id: str) -> dict:
         "yt_tags": job.yt_tags,
         "thumbnail": _view(job.thumbnail_url),
     }
+
+
+@app.post("/jobs/{job_id}/beats/{beat_index}/regenerate")
+def regenerate_beat(
+    job_id: str, beat_index: int, x_access_code: str | None = Header(default=None)
+) -> dict:
+    """Regenerate a single beat's image, then re-assemble the video. Async."""
+    _require_code(x_access_code)
+    try:
+        job = store.load(job_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail=f"job not found: {job_id}") from e
+    if job.status != JobStatus.DONE:
+        raise HTTPException(status_code=409, detail="can only regenerate images on a finished video")
+    if not job.script or not any(b.index == beat_index for b in job.script.beats):
+        raise HTTPException(status_code=404, detail=f"beat {beat_index} not found")
+    runner.submit_regenerate(job_id, beat_index)
+    return {"job_id": job_id, "status": "running", "step": f"regenerating image {beat_index + 1}"}

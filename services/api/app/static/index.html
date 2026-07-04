@@ -4,12 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Ghostreel — faceless video studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='32' y2='32' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%23a78bfa'/%3E%3Cstop offset='1' stop-color='%237c3aed'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M6 15a10 10 0 0 1 20 0v12c0 .9-1 1.4-1.7.8l-1.8-1.4a1.5 1.5 0 0 0-1.9 0l-1.9 1.5a1.5 1.5 0 0 1-1.8 0l-1.9-1.5a1.5 1.5 0 0 0-1.9 0l-1.8 1.4c-.7.6-1.7.1-1.7-.8V15Z' fill='url(%23g)'/%3E%3Cpath d='M13 11l8 5-8 5V11Z' fill='%230a0a0f'/%3E%3C/svg%3E" />
   <style>
     :root { --bg:#0a0a0f; --card:#12121a; --line:rgba(255,255,255,.07); --violet:#8b5cf6; --muted:#8b8b9a; }
     * { box-sizing: border-box; }
     body { margin:0; background:var(--bg); color:#ececf1; font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-    .wrap { max-width:980px; margin:0 auto; padding:40px 20px 80px; }
-    h1 { font-size:26px; margin:0 0 4px; letter-spacing:-.02em; } h1 span { color:var(--violet); }
+    .wrap { max-width:980px; margin:0 auto; padding:40px 20px 40px; }
+    .brand { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+    .brand svg { display:block; filter:drop-shadow(0 2px 8px rgba(139,92,246,.35)); }
+    h1 { font-size:26px; margin:0; letter-spacing:-.02em; font-weight:700; } h1 span { color:var(--violet); }
     .sub { color:var(--muted); margin:0 0 24px; font-size:14px; }
     .bar { display:flex; gap:10px; margin-bottom:14px; }
     input[type=text] { flex:1; background:#0a0a0f; border:1px solid #2a2a38; border-radius:12px; padding:13px 16px; color:#fff; font-size:15px; outline:none; }
@@ -87,11 +90,48 @@
     .hist-status.done { border-color:rgba(34,197,94,.3); color:#4ade80; }
     .hist-status.failed { border-color:rgba(239,68,68,.3); color:#f87171; }
     .hist-status.awaiting_review { border-color:rgba(245,158,11,.3); color:#fbbf24; }
+    /* Pipeline stepper */
+    .stepper { display:flex; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:22px; overflow-x:auto; }
+    .stg { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+    .stg-dot { width:20px; height:20px; border-radius:50%; border:2px solid #2a2a38; display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--muted); flex-shrink:0; transition:all .3s; }
+    .stg-label { font-size:12px; color:var(--muted); white-space:nowrap; transition:color .3s; }
+    .stg-conn { width:22px; height:2px; background:#2a2a38; margin:0 8px; flex:0 0 auto; transition:background .3s; }
+    .stg.active .stg-dot { border-color:var(--violet); color:var(--violet); box-shadow:0 0 0 4px rgba(139,92,246,.15); animation:pulse 1.3s infinite; }
+    .stg.active .stg-label { color:#ececf1; font-weight:600; }
+    .stg.done .stg-dot { border-color:#22c55e; background:#22c55e; color:#0a0a0f; }
+    .stg.done + .stg-conn, .stg-conn.done { background:#22c55e; }
+    /* Per-beat regenerate */
+    .regen-btn { margin-top:8px; background:none; border:1px solid #2a2a38; color:var(--muted); font-size:12px; font-weight:500; padding:5px 11px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; }
+    .regen-btn:hover:not(:disabled) { border-color:var(--violet); color:#fff; }
+    .regen-btn:disabled { opacity:.45; cursor:not-allowed; }
+    .seg .busy { position:absolute; inset:0; background:rgba(10,10,15,.72); display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px; gap:8px; }
+    .seg { position:relative; }
+    .spin { width:14px; height:14px; border:2px solid rgba(255,255,255,.25); border-top-color:#fff; border-radius:50%; animation:rot .7s linear infinite; }
+    @keyframes rot { to { transform:rotate(360deg); } }
+    /* Footer */
+    .foot { margin-top:48px; padding-top:22px; border-top:1px solid var(--line); display:flex; align-items:center; justify-content:center; gap:20px; flex-wrap:wrap; color:var(--muted); font-size:12px; }
+    .foot .chip { display:flex; align-items:center; gap:7px; }
+    .foot .chip b { color:#c9c9d4; font-weight:600; }
+    .foot .chip svg { opacity:.9; }
+    /* Toast */
+    .toast { position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(8px); background:#1a1a26; border:1px solid var(--line); color:#ececf1; padding:11px 20px; border-radius:11px; font-size:13px; opacity:0; transition:opacity .3s, transform .3s; pointer-events:none; z-index:50; box-shadow:0 8px 30px rgba(0,0,0,.4); }
+    .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Ghost<span>reel</span></h1>
+    <div class="brand">
+      <svg width="38" height="38" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="grlogo" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#a78bfa"/><stop offset="1" stop-color="#7c3aed"/>
+          </linearGradient>
+        </defs>
+        <path d="M6 15a10 10 0 0 1 20 0v12c0 .9-1 1.4-1.7.8l-1.8-1.4a1.5 1.5 0 0 0-1.9 0l-1.9 1.5a1.5 1.5 0 0 1-1.8 0l-1.9-1.5a1.5 1.5 0 0 0-1.9 0l-1.8 1.4c-.7.6-1.7.1-1.7-.8V15Z" fill="url(#grlogo)"/>
+        <path d="M13 11l8 5-8 5V11Z" fill="#0a0a0f"/>
+      </svg>
+      <h1>Ghost<span>reel</span></h1>
+    </div>
     <p class="sub">Type a topic. Get a finished faceless video — script, style-locked visuals, voiceover; self-healing and provenance-tracked.</p>
 
     <div class="bar">
@@ -127,9 +167,12 @@
       <div id="historyList"></div>
     </div>
 
+    <div id="stepper" class="stepper" style="display:none"></div>
+
     <div id="statusRow" class="status" style="display:none">
       <span class="dot"></span>
       <span class="step" id="step">queued</span>
+      <span class="badge" id="elapsed" style="display:none"></span>
       <span class="badge" id="beatCount"></span>
       <span class="badge heal" id="healBadge" style="display:none"></span>
     </div>
@@ -190,7 +233,15 @@
     </div>
 
     <div id="grid" class="grid"></div>
+
+    <footer class="foot">
+      <span class="chip">Assets &amp; jobs stored on <b>Backblaze B2</b></span>
+      <span class="chip">Media pipeline orchestrated with <b>Genblaze</b></span>
+      <span class="chip">Imagen · Gemini · ElevenLabs · AssemblyAI</span>
+    </footer>
   </div>
+
+  <div id="toast" class="toast"></div>
 
   <script>
     const $ = (id) => document.getElementById(id);
@@ -243,6 +294,7 @@
       $("statusRow").style.display = "flex";
       $("step").textContent = "queued";
       $("narration-edit").value = "";
+      genStart = null; stopElapsed();
       try {
         const payload = {
           topic,
@@ -272,6 +324,7 @@
 
     function watch(id) {
       if (timer) clearInterval(timer);
+      genStart = null;  // measure elapsed from this watch cycle; avoids stale values
       timer = setInterval(() => poll(id), 3000); poll(id);
     }
 
@@ -287,6 +340,9 @@
       if (d.beat_count > 0) $("beatCount").textContent = d.beat_count + " beats";
       else if (d.beats?.length) $("beatCount").textContent = d.beats.length + " beats";
       if (d.retries > 0) { $("healBadge").style.display = ""; $("healBadge").textContent = "⟳ " + d.retries + " self-healed"; }
+
+      renderStepper(st, d.step);
+      if (st === "running" || st === "pending") startElapsed(); else stopElapsed();
 
       reviewing = (st === "awaiting_review");
       currentMode = d.voice_mode || "tts";
@@ -305,7 +361,7 @@
         }
       }
 
-      renderBeats(d.beats || [], reviewing);
+      renderBeats(d.beats || [], reviewing, st === "done");
 
       if (st === "done" || st === "failed") {
         clearInterval(timer); timer = null; $("go").disabled = false;
@@ -323,7 +379,7 @@
       }
     }
 
-    function renderBeats(beats, editable) {
+    function renderBeats(beats, editable, canRegen) {
       if (editable) {
         // During review: don't render beat cards — user only sees the narration textarea.
         $("grid").innerHTML = "";
@@ -340,8 +396,10 @@
         const prov = showProv
           ? `<details><summary>provenance</summary><div class="prov">prompt: ${escapeHtml(b.image_prompt || b.visual || "")}${b.qa_reason ? "\nqa: " + escapeHtml(b.qa_reason) : ""}</div></details>`
           : "";
+        const regenBtn = (canRegen && b.image)
+          ? `<button class="regen-btn" onclick="regenBeat(${b.index}, this)">↻ Regenerate</button>` : "";
         return `<div class="seg">${media}
-          <div class="body">${timing}<p class="narr">${escapeHtml(b.text || "")}</p>${regen}${prov}</div></div>`;
+          <div class="body">${timing}<p class="narr">${escapeHtml(b.text || "")}</p>${regen}${prov}${regenBtn}</div></div>`;
       }).join("");
     }
 
@@ -415,6 +473,79 @@
 
     function escapeHtml(t) { const d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
 
+    // --- Pipeline stepper: turns the invisible orchestration into something judges can see ---
+    const STAGES = [
+      { label: "Script",    match: s => ["queued", "script", "metadata"].includes(s) },
+      { label: "Voiceover", match: s => s === "voice" },
+      { label: "Timing",    match: s => ["transcribe", "beats"].includes(s) },
+      { label: "Visuals",   match: s => s === "visuals" },
+      { label: "Images",    match: s => s.startsWith("image") || s.includes("regenerat") },
+      { label: "Assemble",  match: s => ["thumbnail", "assemble"].includes(s) || s.includes("reassembl") },
+    ];
+    function stageIndex(step) {
+      const s = (step || "").toLowerCase();
+      for (let i = 0; i < STAGES.length; i++) if (STAGES[i].match(s)) return i;
+      return 0;
+    }
+    function renderStepper(status, step) {
+      const el = $("stepper");
+      if (!["running", "pending", "done"].includes(status)) { el.style.display = "none"; return; }
+      el.style.display = "flex";
+      const done = status === "done";
+      const active = done ? STAGES.length : stageIndex(step);
+      el.innerHTML = STAGES.map((stg, i) => {
+        const complete = done || i < active;
+        const cls = "stg" + (complete ? " done" : i === active ? " active" : "");
+        const mark = complete ? "✓" : (i + 1);
+        const conn = i < STAGES.length - 1
+          ? `<span class="stg-conn ${complete ? "done" : ""}"></span>` : "";
+        return `<div class="${cls}"><span class="stg-dot">${mark}</span><span class="stg-label">${stg.label}</span></div>${conn}`;
+      }).join("");
+    }
+
+    // --- Elapsed timer: kills the "is it stuck?" anxiety on slow generations ---
+    let genStart = null, elapsedTimer = null;
+    function startElapsed() {
+      if (!genStart) genStart = Date.now();
+      $("elapsed").style.display = "";
+      tickElapsed();
+      if (!elapsedTimer) elapsedTimer = setInterval(tickElapsed, 1000);
+    }
+    function tickElapsed() {
+      if (!genStart) return;
+      const s = Math.floor((Date.now() - genStart) / 1000);
+      $("elapsed").textContent = `⏱ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    }
+    function stopElapsed() {
+      if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+      $("elapsed").style.display = "none";
+    }
+
+    // --- Toast ---
+    let toastTimer = null;
+    function toast(msg) {
+      const t = $("toast"); t.textContent = msg; t.classList.add("show");
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove("show"), 3400);
+    }
+
+    // --- Regenerate a single beat image, then rebuild the video ---
+    async function regenBeat(idx, btn) {
+      if (!currentJob) return;
+      btn.disabled = true;
+      try {
+        const r = await fetch(`/jobs/${currentJob}/beats/${idx}/regenerate`, { method: "POST", headers: baseHeaders() });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          toast(e.detail || "Couldn't regenerate that image"); btn.disabled = false; return;
+        }
+        toast(`Regenerating image ${idx + 1} and rebuilding the video…`);
+        $("result").style.display = "none";
+        $("dl").style.display = "none";
+        watch(currentJob);
+      } catch { toast("Couldn't regenerate that image"); btn.disabled = false; }
+    }
+
     // --- History ---
     function fmtAgo(iso) {
       const diff = Date.now() - new Date(iso).getTime();
@@ -457,6 +588,7 @@
     function loadHistoryJob(job_id) {
       if (timer) clearInterval(timer);
       currentJob = job_id; _narrationPopulated = false;
+      genStart = null; stopElapsed();
       $("statusRow").style.display = "flex";
       $("result").style.display = "none";
       $("reviewbar").style.display = "none";

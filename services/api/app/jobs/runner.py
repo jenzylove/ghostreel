@@ -106,10 +106,11 @@ def _generate_beat_images_parallel(
         for future in as_completed(futures):
             try:
                 idx, url, data, attempts = future.result()
-            except Exception as e:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 beat = futures[future]
+                logger.exception("beat %s image worker failed", beat.index)
                 beat.attempts = [
-                    QaAttempt(attempt=1, url=None, passed=False, score=0.0, reason=f"worker error: {e}")
+                    QaAttempt(attempt=1, url=None, passed=False, score=0.0, reason="image generation failed")
                 ]
                 store.save(job)
                 continue
@@ -225,6 +226,72 @@ def run_job(job_id: str) -> None:  # noqa: C901
                 audio_bytes = get_by_url(job.script.audio_url)
             job.video_url = assemble_slideshow(job.script, audio_bytes, captions=job.captions, image_cache=image_cache)
             store.save(job)
+
+        job.retries = sum(max(0, len(b.attempts) - 1) for b in job.script.beats)
+        job.status = JobStatus.DONE
+        job.step = "done"
+        store.save(job)
+        store.update_session_index(job)
+        store.remove_pending(job.job_id)
+
+    except Exception as e:  # noqa: BLE001
+        job.status = JobStatus.FAILED
+        job.error = _friendly_error(e)
+        store.save(job)
+        store.update_session_index(job)
+        store.remove_pending(job.job_id)
+        raise
+
+
+def submit_regenerate(job_id: str, beat_index: int) -> None:
+    _executor.submit(_safe_regenerate, job_id, beat_index)
+
+
+def _safe_regenerate(job_id: str, beat_index: int) -> None:
+    try:
+        regenerate_beat(job_id, beat_index)
+    except Exception:
+        logger.exception("regenerate beat %s of job %s crashed", beat_index, job_id)
+
+
+def regenerate_beat(job_id: str, beat_index: int) -> None:
+    """Regenerate one beat's image (fresh QA), then re-assemble the video.
+
+    Used after a job is DONE when the user dislikes a single still. Only the one image
+    is regenerated; every other beat image is reused from B2 during reassembly.
+    """
+    job = store.load(job_id)
+    if not job.script:
+        return
+    beat = next((b for b in job.script.beats if b.index == beat_index), None)
+    if beat is None or not beat.image_prompt:
+        return
+
+    preset = job.style or DEFAULT_STYLE
+    byo = job.voice_mode == "byo"
+    job.status = JobStatus.RUNNING
+    job.error = None
+    job.step = f"regenerating image {beat_index + 1}"
+    store.save(job)
+    store.update_session_index(job)
+    store.add_pending(job.job_id)
+
+    try:
+        url, data, attempts = generate_and_qa(beat.image_prompt, beat, preset)
+        if url:
+            beat.image_url = url
+            beat.attempts = attempts
+            store.save(job)
+
+        # Re-assemble: only the regenerated image is passed in-memory; the rest come from B2.
+        job.step = "reassembling video"
+        job.video_url = None
+        store.save(job)
+        audio_bytes = backend().get(job.audio_key) if byo else get_by_url(job.script.audio_url)
+        cache = {beat_index: data} if data else None
+        job.video_url = assemble_slideshow(
+            job.script, audio_bytes, captions=job.captions, image_cache=cache
+        )
 
         job.retries = sum(max(0, len(b.attempts) - 1) for b in job.script.beats)
         job.status = JobStatus.DONE
