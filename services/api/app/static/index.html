@@ -329,16 +329,24 @@
     }
 
     async function poll(id) {
-      let d; try { d = await (await fetch(`/jobs/${id}/media`)).json(); } catch { return; }
+      let r, d;
+      try { r = await fetch(`/jobs/${id}/media`); d = await r.json(); } catch { return; }
+      if (!r.ok || !d.status) return;  // not yet persisted or transient error — next tick will retry
       currentJob = id;
       const st = d.status;
       $("statusRow").className = "status " + (st === "done" ? "done" : st === "failed" ? "failed" : st === "awaiting_review" ? "review" : "");
+      const stepLabel = {
+        queued: "queued", script: "generating script", metadata: "writing metadata",
+        voice: "generating voiceover", transcribe: "transcribing audio", beats: "building beats",
+        visuals: "describing visuals", thumbnail: "generating thumbnail", assemble: "assembling video",
+      }[d.step] || d.step || "generating…";
       $("step").textContent = st === "done" ? "done"
         : st === "failed" ? ("failed — " + (d.error || "unknown error").slice(0, 140))
         : st === "awaiting_review" ? "awaiting your review"
-        : ("working · " + d.step);
-      if (d.beat_count > 0) $("beatCount").textContent = d.beat_count + " beats";
-      else if (d.beats?.length) $("beatCount").textContent = d.beats.length + " beats";
+        : ("working · " + stepLabel);
+      if (d.beat_count > 0) { $("beatCount").style.display = ""; $("beatCount").textContent = d.beat_count + " beats"; }
+      else if (d.beats?.length) { $("beatCount").style.display = ""; $("beatCount").textContent = d.beats.length + " beats"; }
+      else $("beatCount").style.display = "none";
       if (d.retries > 0) { $("healBadge").style.display = ""; $("healBadge").textContent = "⟳ " + d.retries + " self-healed"; }
 
       renderStepper(st, d.step);
