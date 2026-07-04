@@ -228,7 +228,7 @@ def create_job(
     store.save(job)
     store.update_session_index(job)
     store.add_pending(job.job_id)
-    runner.submit(job.job_id)
+    runner.submit(job.job_id, job)
     return {"job_id": job.job_id, "status": job.status.value}
 
 

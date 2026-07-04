@@ -64,13 +64,13 @@ def _friendly_error(e: Exception) -> str:
     return f"Unexpected error ({t}) — check server logs for details"
 
 
-def submit(job_id: str) -> None:
-    _executor.submit(_safe_run, job_id)
+def submit(job_id: str, job: Job | None = None) -> None:
+    _executor.submit(_safe_run, job_id, job)
 
 
-def _safe_run(job_id: str) -> None:
+def _safe_run(job_id: str, job: Job | None = None) -> None:
     try:
-        run_job(job_id)
+        run_job(job_id, job)
     except Exception:
         logger.exception("job %s crashed", job_id)
 
@@ -126,8 +126,8 @@ def _generate_beat_images_parallel(
     return image_cache
 
 
-def run_job(job_id: str) -> None:  # noqa: C901
-    job = store.load(job_id)
+def run_job(job_id: str, job: Job | None = None) -> None:  # noqa: C901
+    job = job or store.load(job_id)
     preset = job.style or DEFAULT_STYLE
     voice_id = job.voice_id or settings.voice_id
     byo = job.voice_mode == "byo"
