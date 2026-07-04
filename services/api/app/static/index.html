@@ -281,7 +281,7 @@
       const st = d.status;
       $("statusRow").className = "status " + (st === "done" ? "done" : st === "failed" ? "failed" : st === "awaiting_review" ? "review" : "");
       $("step").textContent = st === "done" ? "done"
-        : st === "failed" ? ("failed — " + (d.error || ""))
+        : st === "failed" ? ("failed — " + (d.error || "unknown error").slice(0, 140))
         : st === "awaiting_review" ? "awaiting your review"
         : ("working · " + d.step);
       if (d.beat_count > 0) $("beatCount").textContent = d.beat_count + " beats";

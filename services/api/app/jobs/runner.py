@@ -36,6 +36,34 @@ _executor = ThreadPoolExecutor(max_workers=2)
 _BEAT_WORKERS = 4
 
 
+def _friendly_error(e: Exception) -> str:
+    """Map internal exceptions to user-readable messages; keep raw detail in server logs."""
+    msg = str(e)
+    m = msg.lower()
+    t = type(e).__name__
+    if "tts returned no audio" in msg:
+        return "Voice generation returned no audio — check ElevenLabs key and selected voice"
+    if "assemblyai returned no assets" in msg:
+        return "Transcription returned no results — audio may be empty or too short"
+    if ("401" in msg or "403" in msg) and ("eleven" in m or "voice" in m or "tts" in m):
+        return "Voice generation failed — ElevenLabs key invalid or voice not on your plan"
+    if "eleven" in m or ("tts" in m and "fail" in m):
+        return "Voice generation failed — check your ElevenLabs API key"
+    if "assemblyai" in m or ("transcri" in m and "fail" in m):
+        return "Transcription failed — check your AssemblyAI API key"
+    if "imagen" in m or ("image" in m and "generat" in m):
+        return "Image generation failed — check your Gemini/Imagen API key"
+    if "gemini" in m or "script generation" in m or "narration" in m:
+        return "Script generation failed — check your Gemini API key"
+    if "b2" in m or "backblaze" in m or "bucket" in m:
+        return "Storage error — check your B2 credentials and bucket name"
+    if "timeout" in m:
+        return "A pipeline step timed out — try a shorter video length"
+    if t == "RuntimeError":
+        return msg[:200]  # RuntimeErrors are already written to be readable
+    return f"Unexpected error ({t}) — check server logs for details"
+
+
 def submit(job_id: str) -> None:
     _executor.submit(_safe_run, job_id)
 
@@ -130,6 +158,7 @@ def run_job(job_id: str) -> None:  # noqa: C901
             job.step = "awaiting review"
             store.save(job)
             store.update_session_index(job)
+            store.remove_pending(job.job_id)
             return
 
         # 2. Audio.
@@ -202,12 +231,14 @@ def run_job(job_id: str) -> None:  # noqa: C901
         job.step = "done"
         store.save(job)
         store.update_session_index(job)
+        store.remove_pending(job.job_id)
 
     except Exception as e:  # noqa: BLE001
         job.status = JobStatus.FAILED
-        job.error = f"{type(e).__name__}: {e}"
+        job.error = _friendly_error(e)
         store.save(job)
         store.update_session_index(job)
+        store.remove_pending(job.job_id)
         raise
 
 

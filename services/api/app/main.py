@@ -12,6 +12,7 @@ Jobs run in a background worker, persist state to B2 after every step, and resum
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -43,8 +44,34 @@ logging.getLogger("genblaze").setLevel(logging.INFO)
 _STATIC = Path(__file__).parent / "static"
 
 
+def _counter_key(d: str) -> str:
+    return f"{settings.asset_prefix}/counters/{d}.json"
+
+
+def _load_daily_count(today: str) -> int:
+    """Read today's job count from B2 — called at startup so the limit survives restarts."""
+    try:
+        return json.loads(backend().get(_counter_key(today))).get("count", 0)
+    except Exception:
+        return 0
+
+
+def _save_daily_count(today: str, count: int) -> None:
+    try:
+        backend().put(
+            _counter_key(today),
+            json.dumps({"count": count}).encode(),
+            content_type="application/json",
+        )
+    except Exception:
+        pass  # best-effort — a failed counter write must never block job creation
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    today = date.today().isoformat()
+    _daily["date"] = today
+    _daily["count"] = _load_daily_count(today)
     runner.resume_pending()
     yield
 
@@ -65,13 +92,15 @@ def _gate_job(code: str | None) -> None:
     _require_code(code)
     today = date.today().isoformat()
     if _daily["date"] != today:
-        _daily["date"], _daily["count"] = today, 0
+        _daily["date"] = today
+        _daily["count"] = _load_daily_count(today)
     if _daily["count"] >= settings.daily_job_limit:
         raise HTTPException(
             status_code=429,
             detail=f"daily generation limit reached ({settings.daily_job_limit}); try again tomorrow",
         )
     _daily["count"] += 1
+    _save_daily_count(today, _daily["count"])
 
 
 def _view(url: str | None) -> str | None:
@@ -194,6 +223,7 @@ def create_job(
     )
     store.save(job)
     store.update_session_index(job)
+    store.add_pending(job.job_id)
     runner.submit(job.job_id)
     return {"job_id": job.job_id, "status": job.status.value}
 
@@ -235,6 +265,7 @@ async def record_job(
     job.status = JobStatus.PENDING
     job.step = "queued"
     store.save(job)
+    store.add_pending(job.job_id)
     runner.submit(job.job_id)
     return {"job_id": job.job_id, "status": job.status.value}
 
@@ -263,6 +294,7 @@ def approve_job(
     job.status = JobStatus.PENDING
     job.step = "queued"
     store.save(job)
+    store.add_pending(job.job_id)
     runner.submit(job.job_id)
     return {"job_id": job.job_id, "status": job.status.value}
 
