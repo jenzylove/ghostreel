@@ -57,23 +57,27 @@ def _presigned(url: str) -> str:
 
 def _generate_beat_images_parallel(
     job: Job, beats_todo: list[Beat], preset: StylePreset
-) -> None:
+) -> dict[int, bytes]:
     """Generate + QA images for all pending beats using a 4-worker thread pool.
 
     Results are written back to the beat objects in-place; job state is saved after each
     completion so the UI progress updates in real time.
+
+    Returns a cache of {beat_index: image_bytes} so the assembler can skip re-downloading
+    files that are already in memory from the QA fetch.
     """
     total = len(job.script.beats)
+    image_cache: dict[int, bytes] = {}
 
-    def _worker(beat: Beat) -> tuple[int, str | None, list[QaAttempt]]:
-        url, attempts = generate_and_qa(beat.image_prompt, beat, preset)
-        return beat.index, url, attempts
+    def _worker(beat: Beat) -> tuple[int, str | None, bytes | None, list[QaAttempt]]:
+        url, data, attempts = generate_and_qa(beat.image_prompt, beat, preset)
+        return beat.index, url, data, attempts
 
     with ThreadPoolExecutor(max_workers=_BEAT_WORKERS) as pool:
         futures = {pool.submit(_worker, b): b for b in beats_todo}
         for future in as_completed(futures):
             try:
-                idx, url, attempts = future.result()
+                idx, url, data, attempts = future.result()
             except Exception as e:  # noqa: BLE001
                 beat = futures[future]
                 beat.attempts = [
@@ -84,9 +88,13 @@ def _generate_beat_images_parallel(
             beat = next(b for b in job.script.beats if b.index == idx)
             beat.image_url = url
             beat.attempts = attempts
+            if data:
+                image_cache[idx] = data
             done = sum(1 for b in job.script.beats if b.image_url)
             job.step = f"image {done}/{total}"
             store.save(job)
+
+    return image_cache
 
 
 def run_job(job_id: str) -> None:  # noqa: C901
@@ -164,9 +172,11 @@ def run_job(job_id: str) -> None:  # noqa: C901
             store.save(job)
 
         # 6. Image generation — parallel across all beats that don't have an image yet.
+        #    Cache holds raw bytes already fetched during QA so assemble skips re-downloading.
+        image_cache: dict[int, bytes] = {}
         beats_todo = [b for b in job.script.beats if b.image_prompt and not b.image_url]
         if beats_todo:
-            _generate_beat_images_parallel(job, beats_todo, preset)
+            image_cache = _generate_beat_images_parallel(job, beats_todo, preset)
 
         # 7. Thumbnail — extra Imagen call (adds to Genblaze usage).
         if not job.thumbnail_url:
@@ -183,7 +193,7 @@ def run_job(job_id: str) -> None:  # noqa: C901
                 audio_bytes = backend().get(job.audio_key)
             else:
                 audio_bytes = get_by_url(job.script.audio_url)
-            job.video_url = assemble_slideshow(job.script, audio_bytes, captions=job.captions)
+            job.video_url = assemble_slideshow(job.script, audio_bytes, captions=job.captions, image_cache=image_cache)
             store.save(job)
 
         job.retries = sum(max(0, len(b.attempts) - 1) for b in job.script.beats)

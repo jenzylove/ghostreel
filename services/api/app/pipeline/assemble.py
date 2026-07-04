@@ -59,11 +59,20 @@ def _build_word_srt(words: list[dict], path: Path, group: int = 4) -> None:
     path.write_text("\n".join(out), encoding="utf-8")
 
 
-def assemble_slideshow(script: Script, audio_bytes: bytes, captions: bool = True) -> str | None:
+def assemble_slideshow(
+    script: Script,
+    audio_bytes: bytes,
+    captions: bool = True,
+    image_cache: dict[int, bytes] | None = None,
+) -> str | None:
     """Beat-timed slideshow assembly over a single audio track.
 
     Each beat's image is shown for (beat.end_s - beat.start_s) seconds. The last beat
     extends to fill remaining audio. Word-level karaoke captions are burned when enabled.
+
+    image_cache: optional {beat_index: bytes} from the generation step. When present,
+    images are read from memory instead of being re-downloaded from B2. Falls back to
+    get_by_url for any beat not in the cache (e.g. on a resumed job).
     """
     work = Path(tempfile.mkdtemp(prefix="ghostreel_sl_"))
 
@@ -80,7 +89,10 @@ def assemble_slideshow(script: Script, audio_bytes: bytes, captions: bool = True
     clips: list[Path] = []
     for i, beat in enumerate(beats):
         img = work / f"img_{i}.png"
-        img.write_bytes(get_by_url(beat.image_url))
+        if image_cache and beat.index in image_cache:
+            img.write_bytes(image_cache[beat.index])
+        else:
+            img.write_bytes(get_by_url(beat.image_url))
 
         # Use the gap to the next beat as duration; stretch the last beat to fill audio.
         if i < len(beats) - 1:

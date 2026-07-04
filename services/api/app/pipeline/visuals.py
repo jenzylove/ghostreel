@@ -41,15 +41,18 @@ def generate_image(prompt: str) -> dict:
 
 def generate_and_qa(
     styled_prompt: str, segment: object, style: StylePreset
-) -> tuple[str | None, list[QaAttempt]]:
+) -> tuple[str | None, bytes | None, list[QaAttempt]]:
     """Generate a segment image, QA it, and regenerate on failure (capped).
 
-    Returns the chosen image URL (first that passes, else the last generated) and the full
-    per-attempt audit trail — the self-healing story for the demo + provenance.
+    Returns (url, data, attempts): url is the accepted image URL, data is its raw bytes
+    (already in memory from the QA fetch — callers can use this to skip re-downloading),
+    and attempts is the full per-attempt audit trail.
     """
     attempts: list[QaAttempt] = []
     passed_url: str | None = None
+    passed_data: bytes | None = None
     last_url: str | None = None
+    last_data: bytes | None = None
     n = settings.qa_max_attempts if settings.qa_enabled else 1
 
     for i in range(1, n + 1):
@@ -66,8 +69,11 @@ def generate_and_qa(
             continue
 
         try:
-            verdict = evaluate_image(get_by_url(url), segment, style)
+            data = get_by_url(url)
+            last_data = data
+            verdict = evaluate_image(data, segment, style)
         except Exception as e:  # noqa: BLE001 - QA must never crash the pipeline
+            data = None
             verdict = Verdict(passed=True, score=1.0, reason=f"qa error, accepted: {e}")
 
         attempts.append(
@@ -75,6 +81,7 @@ def generate_and_qa(
         )
         if verdict.passed:
             passed_url = url
+            passed_data = data
             break
 
-    return (passed_url or last_url), attempts
+    return (passed_url or last_url), (passed_data or last_data), attempts
