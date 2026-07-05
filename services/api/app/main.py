@@ -314,7 +314,7 @@ def download_video(job_id: str) -> StreamingResponse:
         raise HTTPException(status_code=404, detail=f"job not found: {job_id}") from e
     if not job.video_url:
         raise HTTPException(status_code=404, detail="no video yet for this job")
-    data = get_by_url(job.video_url)
+    data = backend().get(key_from_url(job.video_url))
     slug = job.topic[:40].replace(" ", "-").lower() if job.topic else job_id[:8]
     filename = f"ghostreel-{slug}.mp4"
     return StreamingResponse(
