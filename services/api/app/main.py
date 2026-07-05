@@ -114,6 +114,11 @@ def _view(url: str | None) -> str | None:
 
 
 @app.get("/")
+def landing() -> FileResponse:
+    return FileResponse(_STATIC / "landing.html")
+
+
+@app.get("/app")
 def index() -> FileResponse:
     return FileResponse(_STATIC / "index.html")
 

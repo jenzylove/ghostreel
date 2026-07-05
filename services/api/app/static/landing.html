@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ghostreel — Faceless Video Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='32' y2='32' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%23a78bfa'/%3E%3Cstop offset='1' stop-color='%237c3aed'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M6 15a10 10 0 0 1 20 0v12c0 .9-1 1.4-1.7.8l-1.8-1.4a1.5 1.5 0 0 0-1.9 0l-1.9 1.5a1.5 1.5 0 0 1-1.8 0l-1.9-1.5a1.5 1.5 0 0 0-1.9 0l-1.8 1.4c-.7.6-1.7.1-1.7-.8V15Z' fill='url(%23g)'/%3E%3Cpath d='M13 11l8 5-8 5V11Z' fill='%230a0a0f'/%3E%3C/svg%3E" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0a0f;
+      --card:     #12121a;
+      --line:     rgba(255,255,255,.07);
+      --violet:   #8b5cf6;
+      --violet-hi:#a78bfa;
+      --violet-lo:#7c3aed;
+      --muted:    #8b8b9a;
+      --text:     #ececf1;
+      --subtext:  #c4c4d0;
+    }
+
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+    }
+
+    /* Ambient violet glow — two cones, top-left and bottom-right */
+    body::before, body::after {
+      content: '';
+      position: fixed;
+      pointer-events: none;
+      z-index: 0;
+      border-radius: 50%;
+    }
+    body::before {
+      top: -200px; left: -140px;
+      width: 720px; height: 720px;
+      background: radial-gradient(circle, rgba(139,92,246,.13) 0%, transparent 65%);
+    }
+    body::after {
+      bottom: -220px; right: -140px;
+      width: 560px; height: 560px;
+      background: radial-gradient(circle, rgba(139,92,246,.07) 0%, transparent 65%);
+    }
+
+    /* Page grid: nav row + hero row */
+    .page {
+      position: relative;
+      z-index: 1;
+      height: 100vh;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 60px;
+      display: grid;
+      grid-template-rows: 68px 1fr;
+    }
+
+    /* ── Nav ── */
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: inherit;
+    }
+    .brand-name {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -.015em;
+    }
+    .brand-name em { font-style: normal; color: var(--violet); }
+    .hackathon-badge {
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: rgba(139,92,246,.08);
+      border: 1px solid rgba(139,92,246,.18);
+      padding: 5px 13px;
+      border-radius: 100px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 52px;
+      align-items: center;
+      padding-bottom: 36px;
+    }
+
+    /* ── Left: copy ── */
+    .copy { display: flex; flex-direction: column; }
+
+    .eyebrow {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--violet);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .eyebrow::before {
+      content: '';
+      display: inline-block;
+      width: 20px;
+      height: 1.5px;
+      background: var(--violet);
+      border-radius: 2px;
+    }
+
+    .headline {
+      font-size: 54px;
+      font-weight: 800;
+      line-height: 1.06;
+      letter-spacing: -.035em;
+      margin-bottom: 20px;
+    }
+    /* "finished video." gets the brand gradient */
+    .headline .grad {
+      background: linear-gradient(125deg, var(--violet-hi) 0%, var(--violet) 55%, var(--violet-lo) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .descriptor {
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--muted);
+      margin-bottom: 36px;
+      max-width: 390px;
+    }
+
+    /* Differentiators */
+    .diffs {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 44px;
+    }
+    .diff { display: flex; gap: 14px; align-items: flex-start; }
+    .diff-num {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      margin-top: 1px;
+      border-radius: 7px;
+      background: rgba(139,92,246,.12);
+      border: 1px solid rgba(139,92,246,.22);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--violet);
+    }
+    .diff-text {
+      font-size: 14px;
+      color: var(--subtext);
+      line-height: 1.58;
+    }
+    .diff-text strong { color: var(--text); font-weight: 600; }
+
+    /* CTA button */
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      background: var(--violet);
+      color: #fff;
+      font-weight: 700;
+      font-size: 15px;
+      padding: 13px 26px 13px 28px;
+      border-radius: 100px;
+      text-decoration: none;
+      align-self: flex-start;
+      box-shadow:
+        0 0 0 1px rgba(139,92,246,.5),
+        0 6px 28px rgba(139,92,246,.38),
+        inset 0 1px 0 rgba(255,255,255,.12);
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .cta:hover {
+      transform: translateY(-2px);
+      box-shadow:
+        0 0 0 1px rgba(139,92,246,.6),
+        0 10px 40px rgba(139,92,246,.5),
+        inset 0 1px 0 rgba(255,255,255,.15);
+    }
+    .cta-arrow { transition: transform .18s ease; }
+    .cta:hover .cta-arrow { transform: translateX(3px); }
+
+    /* ── Right: preview card ── */
+    .preview {
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: 20px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.04) inset,
+        0 32px 80px rgba(0,0,0,.45),
+        0 0 60px rgba(139,92,246,.06);
+      /* keep card from growing taller than viewport */
+      max-height: calc(100vh - 68px - 60px);
+      overflow: hidden;
+    }
+
+    /* Mini pipeline stepper — all done */
+    .mini-stepper {
+      display: flex;
+      align-items: center;
+      padding: 0 2px;
+    }
+    .ms-stage { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+    .ms-dot {
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      background: #22c55e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ms-label { font-size: 10px; font-weight: 600; color: #4ade80; white-space: nowrap; }
+    .ms-conn { flex: 1; height: 1.5px; background: rgba(34,197,94,.35); margin: 0 5px; }
+
+    /* Video */
+    .video-wrap {
+      position: relative;
+      border-radius: 11px;
+      overflow: hidden;
+      background: #000;
+      aspect-ratio: 16/9;
+      flex-shrink: 0;
+    }
+    #pv {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      opacity: 0;
+      transition: opacity .5s ease;
+    }
+    .video-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10,10,15,.7);
+      backdrop-filter: blur(2px);
+      transition: opacity .4s;
+    }
+    .video-overlay.hidden { opacity: 0; pointer-events: none; }
+    .play-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(139,92,246,.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 24px rgba(139,92,246,.5);
+    }
+
+    /* Job meta row */
+    .preview-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .preview-topic {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 55%;
+    }
+    .preview-pills { display: flex; gap: 6px; }
+    .pill {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--line);
+      padding: 3px 9px;
+      border-radius: 100px;
+    }
+
+    /* Beat thumbnail strip */
+    .beat-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .beat-thumb {
+      aspect-ratio: 16/9;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #0d0d16;
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .beat-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .beat-ph { color: rgba(255,255,255,.12); }
+
+    /* ── Mobile ── */
+    @media (max-width: 860px) {
+      body { overflow: auto; }
+      .page { height: auto; grid-template-rows: auto auto; padding: 0 24px; }
+      .hero { grid-template-columns: 1fr; padding-bottom: 60px; gap: 40px; }
+      .headline { font-size: 38px; }
+      .descriptor { max-width: 100%; }
+      .preview { max-height: none; }
+    }
+    @media (max-width: 520px) {
+      .page { padding: 0 18px; }
+      .headline { font-size: 32px; }
+      .hackathon-badge { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- Nav -->
+    <nav class="nav">
+      <a class="brand" href="/">
+        <svg width="26" height="26" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="lg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#a78bfa"/><stop offset="1" stop-color="#7c3aed"/>
+            </linearGradient>
+          </defs>
+          <path d="M6 15a10 10 0 0 1 20 0v12c0 .9-1 1.4-1.7.8l-1.8-1.4a1.5 1.5 0 0 0-1.9 0l-1.9 1.5a1.5 1.5 0 0 1-1.8 0l-1.9-1.5a1.5 1.5 0 0 0-1.9 0l-1.8 1.4c-.7.6-1.7.1-1.7-.8V15Z" fill="url(#lg)"/>
+          <path d="M13 11l8 5-8 5V11Z" fill="#0a0a0f"/>
+        </svg>
+        <span class="brand-name">Ghost<em>reel</em></span>
+      </a>
+      <span class="hackathon-badge">Backblaze Generative Media Hackathon</span>
+    </nav>
+
+    <!-- Hero -->
+    <main class="hero">
+
+      <!-- Left: copy -->
+      <div class="copy">
+        <p class="eyebrow">Faceless video studio</p>
+
+        <h1 class="headline">
+          Turn any topic<br>
+          into a <span class="grad">finished video.</span>
+        </h1>
+
+        <p class="descriptor">
+          Script, voiceover, and style-locked visuals — generated,
+          QA-checked, and assembled automatically.
+        </p>
+
+        <div class="diffs">
+          <div class="diff">
+            <span class="diff-num">1</span>
+            <p class="diff-text">
+              <strong>Self-healing image QA</strong> automatically regenerates bad frames — no manual retry needed.
+            </p>
+          </div>
+          <div class="diff">
+            <span class="diff-num">2</span>
+            <p class="diff-text">
+              <strong>Full provenance tracking</strong> logs the model, prompt, and QA verdict for every generated asset.
+            </p>
+          </div>
+          <div class="diff">
+            <span class="diff-num">3</span>
+            <p class="diff-text">
+              <strong>Resumable jobs</strong> pick up exactly where they left off — a crash mid-render never starts from zero.
+            </p>
+          </div>
+        </div>
+
+        <a href="/app" class="cta">
+          Start creating
+          <svg class="cta-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M2 7h10M7.5 2.5L12 7l-4.5 4.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </a>
+      </div>
+
+      <!-- Right: real job preview -->
+      <div class="preview" aria-label="Example output">
+
+        <!-- Pipeline stepper — all stages complete -->
+        <div class="mini-stepper" aria-hidden="true">
+          <div class="ms-stage">
+            <div class="ms-dot">
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 3.5-3.5" stroke="#0a0a0f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <span class="ms-label">Script</span>
+          </div>
+          <div class="ms-conn"></div>
+          <div class="ms-stage">
+            <div class="ms-dot">
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 3.5-3.5" stroke="#0a0a0f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <span class="ms-label">Voice</span>
+          </div>
+          <div class="ms-conn"></div>
+          <div class="ms-stage">
+            <div class="ms-dot">
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 3.5-3.5" stroke="#0a0a0f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <span class="ms-label">Timing</span>
+          </div>
+          <div class="ms-conn"></div>
+          <div class="ms-stage">
+            <div class="ms-dot">
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 3.5-3.5" stroke="#0a0a0f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <span class="ms-label">Images</span>
+          </div>
+          <div class="ms-conn"></div>
+          <div class="ms-stage">
+            <div class="ms-dot">
+              <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 3.5-3.5" stroke="#0a0a0f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <span class="ms-label">Assemble</span>
+          </div>
+        </div>
+
+        <!-- Video player -->
+        <div class="video-wrap">
+          <video id="pv" autoplay muted loop playsinline></video>
+          <div class="video-overlay" id="voverlay">
+            <div class="play-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M5 3l9 5-9 5V3Z" fill="white"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Topic + stats -->
+        <div class="preview-meta">
+          <span class="preview-topic" id="pt">Loading example…</span>
+          <div class="preview-pills">
+            <span class="pill" id="ps1"></span>
+            <span class="pill" id="ps2"></span>
+          </div>
+        </div>
+
+        <!-- 3 beat thumbnails -->
+        <div class="beat-strip" id="bs">
+          <div class="beat-thumb"><div class="beat-ph">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.2"/><path d="M2 8h18M8 14h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </div></div>
+          <div class="beat-thumb"><div class="beat-ph">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.2"/><path d="M2 8h18M8 14h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </div></div>
+          <div class="beat-thumb"><div class="beat-ph">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="2" y="2" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.2"/><path d="M2 8h18M8 14h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </div></div>
+        </div>
+
+      </div><!-- /preview -->
+    </main>
+  </div>
+
+  <script>
+    const JOB_ID = "147a59b79fed408587b125d8bd93db2d";
+
+    async function loadPreview() {
+      try {
+        const r = await fetch(`/jobs/${JOB_ID}/media`);
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!d.status) return;
+
+        // Topic
+        const pt = document.getElementById("pt");
+        if (pt) pt.textContent = d.topic || "Example";
+
+        // Stats: beat count + duration from last beat
+        const beats = d.beats || [];
+        const beatCount = d.beat_count || beats.length;
+        const ps1 = document.getElementById("ps1");
+        const ps2 = document.getElementById("ps2");
+        if (ps1 && beatCount) ps1.textContent = beatCount + " beats";
+        if (ps2 && beats.length) {
+          const lastEnd = beats[beats.length - 1].end_s;
+          const m = Math.floor(lastEnd / 60);
+          const s = String(Math.floor(lastEnd % 60)).padStart(2, "0");
+          ps2.textContent = `${m}:${s}`;
+        }
+
+        // Video — fade in on first canplay
+        if (d.video) {
+          const v = document.getElementById("pv");
+          const overlay = document.getElementById("voverlay");
+          v.src = d.video;
+          v.addEventListener("canplay", () => {
+            v.style.opacity = "1";
+            if (overlay) overlay.classList.add("hidden");
+          }, { once: true });
+        }
+
+        // Beat thumbnails: 3 evenly spaced across beats that have images
+        const withImages = beats.filter(b => b.image);
+        if (withImages.length >= 3) {
+          const n = withImages.length;
+          const picks = [
+            withImages[Math.floor(n * 0.08)],
+            withImages[Math.floor(n * 0.48)],
+            withImages[Math.floor(n * 0.88)],
+          ];
+          const bs = document.getElementById("bs");
+          if (bs) {
+            bs.innerHTML = picks.map(b =>
+              `<div class="beat-thumb"><img src="${b.image}" alt="scene from ${d.topic || 'example'}" loading="lazy" /></div>`
+            ).join("");
+          }
+        }
+      } catch {
+        // silently degrade — the landing page works without the preview data
+      }
+    }
+
+    loadPreview();
+  </script>
+</body>
+</html>
