@@ -24,6 +24,12 @@ _PREFIX = f"{settings.asset_prefix}/jobs"
 _SESSION_PREFIX = f"{settings.asset_prefix}/sessions"
 _PENDING_KEY = f"{settings.asset_prefix}/pending.json"
 
+# In-memory job cache — eliminates B2 GETs for every status poll and mid-pipeline loads.
+# Safe because everything runs in one process; B2 remains the durable source of truth.
+# Evict oldest when over _CACHE_MAX so memory stays bounded even under high load.
+_cache: dict[str, Job] = {}
+_CACHE_MAX = 500
+
 
 def _key(job_id: str) -> str:
     return f"{_PREFIX}/{job_id}.json"
@@ -31,11 +37,18 @@ def _key(job_id: str) -> str:
 
 def save(job: Job) -> None:
     job.updated_at = datetime.now(timezone.utc).isoformat()
+    _cache[job.job_id] = job
+    if len(_cache) > _CACHE_MAX:
+        _cache.pop(next(iter(_cache)))
     backend().put(_key(job.job_id), job.model_dump_json().encode(), content_type="application/json")
 
 
 def load(job_id: str) -> Job:
-    return Job.model_validate_json(backend().get(_key(job_id)))
+    if job_id in _cache:
+        return _cache[job_id]
+    job = Job.model_validate_json(backend().get(_key(job_id)))
+    _cache[job.job_id] = job
+    return job
 
 
 def _session_key(user_id: str) -> str:
