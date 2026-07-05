@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
     asset_prefix: str = "ghostreel"
     default_minutes: float = 4.0      # target video length when not specified by the user
-    beat_duration_s: float = 10.0     # one image every N seconds of audio
+    beat_duration_s: float = 4.0      # one image every N seconds of audio
     tts_chunk_chars: int = 4500       # ElevenLabs per-request char limit
 
     # Rate gate (protects the public URL's API budget). If access_code is set, the

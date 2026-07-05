@@ -100,14 +100,30 @@
     .stg.active .stg-label { color:#ececf1; font-weight:600; }
     .stg.done .stg-dot { border-color:#22c55e; background:#22c55e; color:#0a0a0f; }
     .stg.done + .stg-conn, .stg-conn.done { background:#22c55e; }
-    /* Per-beat regenerate */
-    .regen-btn { margin-top:8px; background:none; border:1px solid #2a2a38; color:var(--muted); font-size:12px; font-weight:500; padding:5px 11px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; }
+    /* Per-beat regenerate — multi-select toggle */
+    .regen-btn { margin-top:8px; background:none; border:1px solid #2a2a38; color:var(--muted); font-size:12px; font-weight:500; padding:5px 11px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:all .15s; }
     .regen-btn:hover:not(:disabled) { border-color:var(--violet); color:#fff; }
     .regen-btn:disabled { opacity:.45; cursor:not-allowed; }
+    .regen-btn.regen-sel { border-color:#f59e0b; color:#f59e0b; background:rgba(245,158,11,.08); }
+    .seg.regen-marked { border-color:rgba(245,158,11,.45); }
+    /* Reassemble action bar */
+    .reassemble-bar { display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid rgba(245,158,11,.35); border-radius:14px; padding:12px 18px; margin-bottom:22px; }
+    .reassemble-bar .hint { flex:1; font-size:13px; color:var(--muted); }
+    .reassemble-bar .rba-clear { background:none; border:none; color:var(--muted); font-size:12px; padding:0 6px; cursor:pointer; }
+    .reassemble-bar .rba-go { background:var(--violet); border:none; color:#fff; font-weight:600; font-size:13px; padding:8px 18px; border-radius:10px; cursor:pointer; }
+    .reassemble-bar .rba-go:disabled { opacity:.5; cursor:not-allowed; }
     .seg .busy { position:absolute; inset:0; background:rgba(10,10,15,.72); display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px; gap:8px; }
     .seg { position:relative; }
     .spin { width:14px; height:14px; border:2px solid rgba(255,255,255,.25); border-top-color:#fff; border-radius:50%; animation:rot .7s linear infinite; }
     @keyframes rot { to { transform:rotate(360deg); } }
+    /* Result footer: models + download side by side */
+    .result-actions { display:flex; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap; gap:8px; }
+    /* YouTube drawer */
+    .ytpkg summary { cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; padding:14px 18px; font-size:13px; font-weight:600; color:var(--muted); border-radius:14px; user-select:none; }
+    .ytpkg summary::-webkit-details-marker { display:none; }
+    .ytpkg[open] summary { border-bottom:1px solid var(--line); border-radius:14px 14px 0 0; margin-bottom:0; }
+    .ytpkg-inner { padding:18px; }
+    .ytpkg-copyall { display:flex; justify-content:flex-end; margin-top:12px; }
     /* Footer */
     .foot { margin-top:48px; padding-top:22px; border-top:1px solid var(--line); display:flex; align-items:center; justify-content:center; gap:20px; flex-wrap:wrap; color:var(--muted); font-size:12px; }
     .foot .chip { display:flex; align-items:center; gap:7px; }
@@ -153,6 +169,13 @@
           <option value="8">8 min</option>
         </select>
       </label>
+      <label>Pace
+        <select id="pace" title="How often images change — faster = more images = longer generation time">
+          <option value="3">Fast (3s)</option>
+          <option value="4" selected>Normal (4s)</option>
+          <option value="7">Slow (7s)</option>
+        </select>
+      </label>
       <label><input type="checkbox" id="captions" checked /> Captions</label>
       <label><input type="checkbox" id="review" checked /> Review</label>
       <label><input type="checkbox" id="prov" /> Show provenance</label>
@@ -191,45 +214,56 @@
 
     <div id="result" class="result" style="display:none">
       <video id="video" controls></video>
-      <div class="models" id="models"></div>
+      <div class="result-actions">
+        <div class="models" id="models"></div>
+        <a id="dl" class="dl-btn" style="display:none" href="#">↓ Download MP4</a>
+      </div>
     </div>
 
-    <div id="ytpkg" class="ytpkg" style="display:none">
-      <div class="ytpkg-header">
-        <span class="ytpkg-title">YouTube Package</span>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <a id="dl" class="dl-btn" style="display:none" href="#">Download MP4 ↓</a>
+    <details id="ytpkg" class="ytpkg" style="display:none">
+      <summary>
+        <span>Publish to YouTube ↗</span>
+        <span style="font-size:11px;font-weight:400;color:var(--muted)">title · description · tags · thumbnail</span>
+      </summary>
+      <div class="ytpkg-inner">
+        <div class="ytpkg-layout">
+          <div id="thumbWrap">
+            <div class="ytpkg-thumb-ph" id="thumbPh">generating…</div>
+          </div>
+          <div class="ytpkg-fields">
+            <div class="ytfield-row">
+              <div class="ytfield">
+                <div class="ytfield-label">Title</div>
+                <div class="ytfield-val" id="ytTitle">—</div>
+              </div>
+              <button class="copy-btn" onclick="copyField('ytTitle')">Copy</button>
+            </div>
+            <div class="ytfield-row">
+              <div class="ytfield">
+                <div class="ytfield-label">Description</div>
+                <div class="ytfield-val" id="ytDesc">—</div>
+              </div>
+              <button class="copy-btn" onclick="copyField('ytDesc')">Copy</button>
+            </div>
+            <div class="ytfield-row">
+              <div class="ytfield">
+                <div class="ytfield-label">Tags</div>
+                <div class="tags" id="ytTags"></div>
+              </div>
+              <button class="copy-btn" onclick="copyTags()">Copy</button>
+            </div>
+          </div>
+        </div>
+        <div class="ytpkg-copyall">
           <button class="copy-btn" id="copyAll" onclick="copyAllYt()">Copy all ↗</button>
         </div>
       </div>
-      <div class="ytpkg-layout">
-        <div id="thumbWrap">
-          <div class="ytpkg-thumb-ph" id="thumbPh">generating…</div>
-        </div>
-        <div class="ytpkg-fields">
-          <div class="ytfield-row">
-            <div class="ytfield">
-              <div class="ytfield-label">Title</div>
-              <div class="ytfield-val" id="ytTitle">—</div>
-            </div>
-            <button class="copy-btn" onclick="copyField('ytTitle')">Copy</button>
-          </div>
-          <div class="ytfield-row">
-            <div class="ytfield">
-              <div class="ytfield-label">Description</div>
-              <div class="ytfield-val" id="ytDesc">—</div>
-            </div>
-            <button class="copy-btn" onclick="copyField('ytDesc')">Copy</button>
-          </div>
-          <div class="ytfield-row">
-            <div class="ytfield">
-              <div class="ytfield-label">Tags</div>
-              <div class="tags" id="ytTags"></div>
-            </div>
-            <button class="copy-btn" onclick="copyTags()">Copy</button>
-          </div>
-        </div>
-      </div>
+    </details>
+
+    <div id="reassembleBar" class="reassemble-bar" style="display:none">
+      <span class="hint">Select images to swap, then re-assemble in one pass</span>
+      <button class="rba-clear" onclick="clearRegenSelection()">✕ Clear</button>
+      <button class="rba-go" id="reassembleBtn" onclick="doReassemble()">Re-assemble (0)</button>
     </div>
 
     <div id="grid" class="grid"></div>
@@ -247,6 +281,7 @@
     const $ = (id) => document.getElementById(id);
     let timer = null, currentJob = null, reviewing = false, currentMode = "tts";
     let _narrationPopulated = false;
+    let _pendingRegen = new Set(), _lastBeats = [], _lastCanRegen = false;
 
     const codeVal = () => localStorage.getItem("ghostreel_code") || "";
 
@@ -286,6 +321,7 @@
       const topic = $("topic").value.trim();
       if (!topic) return;
       $("go").disabled = true; reviewing = false; _narrationPopulated = false;
+      _pendingRegen.clear(); $("reassembleBar").style.display = "none";
       $("grid").innerHTML = "";
       $("result").style.display = "none";
       $("reviewbar").style.display = "none";
@@ -302,6 +338,7 @@
           style_id: $("style").value,
           voice_id: $("voice").value,
           target_minutes: parseFloat($("length").value) || 4,
+          beat_duration_s: parseFloat($("pace").value) || 4,
           captions: $("captions").checked,
           review: $("review").checked
         };
@@ -388,6 +425,7 @@
     }
 
     function renderBeats(beats, editable, canRegen) {
+      _lastBeats = beats; _lastCanRegen = canRegen;
       if (editable) {
         // During review: don't render beat cards — user only sees the narration textarea.
         $("grid").innerHTML = "";
@@ -395,20 +433,68 @@
       }
       const showProv = $("prov").checked;
       $("grid").innerHTML = beats.map(b => {
+        const sel = _pendingRegen.has(b.index);
         const media = b.image
           ? `<img src="${b.image}" alt="beat ${b.index}" />`
           : `<div class="ph">${b.attempts > 1 ? "regenerating…" : "…"}</div>`;
-        const regen = b.attempts > 1 ? `<div class="qa"><span class="k regen">⟳ regenerated</span></div>` : "";
+        const regenBadge = b.attempts > 1 ? `<div class="qa"><span class="k regen">⟳ regenerated</span></div>` : "";
         const timing = b.start_s != null
           ? `<div class="timing">${fmtTime(b.start_s)} – ${fmtTime(b.end_s)}</div>` : "";
         const prov = showProv
           ? `<details><summary>provenance</summary><div class="prov">prompt: ${escapeHtml(b.image_prompt || b.visual || "")}${b.qa_reason ? "\nqa: " + escapeHtml(b.qa_reason) : ""}</div></details>`
           : "";
         const regenBtn = (canRegen && b.image)
-          ? `<button class="regen-btn" onclick="regenBeat(${b.index}, this)">↻ Regenerate</button>` : "";
-        return `<div class="seg">${media}
-          <div class="body">${timing}<p class="narr">${escapeHtml(b.text || "")}</p>${regen}${prov}${regenBtn}</div></div>`;
+          ? `<button class="regen-btn ${sel ? "regen-sel" : ""}" onclick="toggleRegen(${b.index}, this)">${sel ? "✓ Selected" : "↻ Regenerate"}</button>` : "";
+        return `<div class="seg ${sel ? "regen-marked" : ""}">${media}
+          <div class="body">${timing}<p class="narr">${escapeHtml(b.text || "")}</p>${regenBadge}${prov}${regenBtn}</div></div>`;
       }).join("");
+    }
+
+    function toggleRegen(idx, btn) {
+      const card = btn.closest(".seg");
+      if (_pendingRegen.has(idx)) {
+        _pendingRegen.delete(idx);
+        btn.classList.remove("regen-sel"); btn.textContent = "↻ Regenerate";
+        if (card) card.classList.remove("regen-marked");
+      } else {
+        _pendingRegen.add(idx);
+        btn.classList.add("regen-sel"); btn.textContent = "✓ Selected";
+        if (card) card.classList.add("regen-marked");
+      }
+      updateReassembleBar();
+    }
+
+    function updateReassembleBar() {
+      const n = _pendingRegen.size;
+      $("reassembleBar").style.display = n > 0 ? "flex" : "none";
+      if (n > 0) $("reassembleBtn").textContent = `Re-assemble (${n} image${n > 1 ? "s" : ""})`;
+    }
+
+    function clearRegenSelection() {
+      _pendingRegen.clear();
+      $("reassembleBar").style.display = "none";
+      renderBeats(_lastBeats, false, _lastCanRegen);
+    }
+
+    async function doReassemble() {
+      if (!currentJob || _pendingRegen.size === 0) return;
+      const btn = $("reassembleBtn");
+      btn.disabled = true;
+      try {
+        const r = await fetch(`/jobs/${currentJob}/reassemble`, {
+          method: "POST", headers: jsonHeaders(),
+          body: JSON.stringify({ beat_indices: [..._pendingRegen] })
+        });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          toast(e.detail || "Couldn't reassemble"); btn.disabled = false; return;
+        }
+        _pendingRegen.clear();
+        $("reassembleBar").style.display = "none";
+        $("result").style.display = "none";
+        $("dl").style.display = "none";
+        watch(currentJob);
+      } catch { toast("Couldn't reassemble"); btn.disabled = false; }
     }
 
     function fmtTime(s) {
@@ -445,7 +531,7 @@
     function renderYtPackage(d) {
       const hasYt = d.yt_title || d.yt_description || (d.yt_tags && d.yt_tags.length);
       if (!hasYt) { $("ytpkg").style.display = "none"; return; }
-      $("ytpkg").style.display = "block";
+      $("ytpkg").style.display = "";  // show the <details> element; stays closed until user clicks
       $("ytTitle").textContent = d.yt_title || "";
       $("ytDesc").textContent = d.yt_description || "";
       $("ytTags").innerHTML = (d.yt_tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join("");
@@ -537,23 +623,6 @@
       toastTimer = setTimeout(() => t.classList.remove("show"), 3400);
     }
 
-    // --- Regenerate a single beat image, then rebuild the video ---
-    async function regenBeat(idx, btn) {
-      if (!currentJob) return;
-      btn.disabled = true;
-      try {
-        const r = await fetch(`/jobs/${currentJob}/beats/${idx}/regenerate`, { method: "POST", headers: baseHeaders() });
-        if (!r.ok) {
-          const e = await r.json().catch(() => ({}));
-          toast(e.detail || "Couldn't regenerate that image"); btn.disabled = false; return;
-        }
-        toast(`Regenerating image ${idx + 1} and rebuilding the video…`);
-        $("result").style.display = "none";
-        $("dl").style.display = "none";
-        watch(currentJob);
-      } catch { toast("Couldn't regenerate that image"); btn.disabled = false; }
-    }
-
     // --- History ---
     function fmtAgo(iso) {
       const diff = Date.now() - new Date(iso).getTime();
@@ -596,6 +665,7 @@
     function loadHistoryJob(job_id) {
       if (timer) clearInterval(timer);
       currentJob = job_id; _narrationPopulated = false;
+      _pendingRegen.clear(); $("reassembleBar").style.display = "none";
       genStart = null; stopElapsed();
       $("statusRow").style.display = "flex";
       $("result").style.display = "none";

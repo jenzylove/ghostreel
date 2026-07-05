@@ -31,6 +31,7 @@ from app.models import (
     GenerateResponse,
     Job,
     JobStatus,
+    ReassembleRequest,
     StylePreset,
     VideoRequest,
 )
@@ -213,6 +214,7 @@ def create_job(
         style_id=style_id,
         style=style,
         target_minutes=req.target_minutes or settings.default_minutes,
+        beat_duration_s=req.beat_duration_s or settings.beat_duration_s,
         voice_id=req.voice_id or settings.voice_id,
         captions=req.captions,
         review=req.review or byo,
@@ -320,6 +322,28 @@ def download_video(job_id: str) -> StreamingResponse:
         media_type="video/mp4",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.post("/jobs/{job_id}/reassemble")
+def reassemble_job(
+    job_id: str, req: ReassembleRequest, x_access_code: str | None = Header(default=None)
+) -> dict:
+    """Regenerate selected beat images (in parallel) then reassemble the video.
+
+    beat_indices: list of beat indices to regenerate before assembling.
+    Empty list = just reassemble with existing images (no new generation).
+    """
+    _require_code(x_access_code)
+    try:
+        job = store.load(job_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail=f"job not found: {job_id}") from e
+    if job.status not in (JobStatus.DONE, JobStatus.FAILED):
+        raise HTTPException(status_code=409, detail="can only reassemble a finished job")
+    n = len(req.beat_indices)
+    runner.submit_batch_regenerate(job_id, req.beat_indices)
+    step = f"regenerating {n} image(s)" if n else "reassembling video"
+    return {"job_id": job_id, "status": "running", "step": step}
 
 
 @app.get("/jobs/{job_id}", response_model=Job)

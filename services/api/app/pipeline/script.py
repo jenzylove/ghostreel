@@ -29,14 +29,20 @@ def generate_script(topic: str, target_minutes: float = 4.0) -> Script:
     target_words = int(target_minutes * 130)
     prompt = (
         f"Write a single continuous spoken narration for a faceless YouTube video about: {topic}\n\n"
-        f"Target length: approximately {target_words} words "
-        f"(about {target_minutes:.0f} minutes when read at a natural pace).\n\n"
-        "Rules:\n"
-        "- Write as flowing spoken prose, not an essay or article\n"
-        "- No stage directions, section labels, or speaker cues\n"
-        "- Start immediately with the content — no 'welcome' opener\n"
-        "- Engaging, informative, no filler phrases\n"
-        "- Return ONLY the narration text, nothing else"
+        f"Target: approximately {target_words} words ({target_minutes:.0f} min at natural speaking pace).\n\n"
+        "Style rules — follow every one of these:\n"
+        "- Open with the most surprising or counterintuitive fact about the topic. No warm-up.\n"
+        "- Short sentences. 20 words maximum. Vary sentence length for rhythm.\n"
+        "- Write how a smart person talks, not how they write an essay. Conversational and direct.\n"
+        "- Active voice only. No passive constructions.\n"
+        "- Zero filler phrases — cut any of these on sight: 'it's important to note', "
+        "'throughout history', 'in conclusion', 'one might argue', 'it is worth mentioning', "
+        "'as we can see', 'in today's world', 'needless to say', 'of course', 'simply put', "
+        "'at the end of the day', 'it goes without saying'.\n"
+        "- No section headers, bullet points, labels, or speaker cues.\n"
+        "- No opening hook like 'welcome' or 'today we're talking about'.\n"
+        "- No sign-off, outro, or call-to-action at the end.\n"
+        "- Return ONLY the narration text, nothing else."
     )
     resp = chat(settings.chat_model, prompt=prompt, api_key=settings.gemini_api_key)
     narration = resp.text.strip()

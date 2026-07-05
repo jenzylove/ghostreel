@@ -106,6 +106,7 @@ class Job(BaseModel):
     captions: bool = True
     review: bool = False
     approved: bool = False
+    beat_duration_s: float = 4.0           # seconds per visual beat — determines image count
     # Phase 5: YouTube upload package
     yt_title: str | None = None
     yt_description: str | None = None
@@ -128,10 +129,15 @@ class VideoRequest(BaseModel):
     voice_id: str | None = None
     captions: bool = True
     review: bool = False
+    beat_duration_s: float | None = None  # 3 / 4 / 7 — fast / normal / slow image pace
 
 
 class ApproveRequest(BaseModel):
     narration: str | None = None   # if provided, replaces the generated narration before render
+
+
+class ReassembleRequest(BaseModel):
+    beat_indices: list[int] = []   # beats to regenerate before reassembling; empty = just reassemble
 
 
 class VideoResponse(BaseModel):

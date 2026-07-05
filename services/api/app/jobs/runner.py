@@ -188,7 +188,7 @@ def run_job(job_id: str, job: Job | None = None) -> None:  # noqa: C901
         if not job.script.beats:
             job.step = "beats"
             store.save(job)
-            job.script.beats = group_into_beats(job.script.word_timings)
+            job.script.beats = group_into_beats(job.script.word_timings, beat_duration_s=job.beat_duration_s)
             store.save(job)
 
         # 5. Visual descriptions — one LLM call for all beats that don't have one yet.
@@ -291,6 +291,68 @@ def regenerate_beat(job_id: str, beat_index: int) -> None:
         cache = {beat_index: data} if data else None
         job.video_url = assemble_slideshow(
             job.script, audio_bytes, captions=job.captions, image_cache=cache
+        )
+
+        job.retries = sum(max(0, len(b.attempts) - 1) for b in job.script.beats)
+        job.status = JobStatus.DONE
+        job.step = "done"
+        store.save(job)
+        store.update_session_index(job)
+        store.remove_pending(job.job_id)
+
+    except Exception as e:  # noqa: BLE001
+        job.status = JobStatus.FAILED
+        job.error = _friendly_error(e)
+        store.save(job)
+        store.update_session_index(job)
+        store.remove_pending(job.job_id)
+        raise
+
+
+def submit_batch_regenerate(job_id: str, beat_indices: list[int]) -> None:
+    _executor.submit(_safe_batch_regenerate, job_id, beat_indices)
+
+
+def _safe_batch_regenerate(job_id: str, beat_indices: list[int]) -> None:
+    try:
+        batch_regenerate_and_assemble(job_id, beat_indices)
+    except Exception:
+        logger.exception("batch regen job %s crashed", job_id)
+
+
+def batch_regenerate_and_assemble(job_id: str, beat_indices: list[int]) -> None:
+    """Regenerate the selected beats' images in parallel, then reassemble the video.
+
+    If beat_indices is empty, skips image generation and just reassembles with the
+    current images already stored in B2.
+    """
+    job = store.load(job_id)
+    if not job.script:
+        return
+
+    preset = job.style or DEFAULT_STYLE
+    byo = job.voice_mode == "byo"
+    n = len(beat_indices)
+    job.status = JobStatus.RUNNING
+    job.error = None
+    job.step = f"regenerating {n} image(s)" if n else "reassembling video"
+    store.save(job)
+    store.update_session_index(job)
+    store.add_pending(job.job_id)
+
+    try:
+        image_cache: dict[int, bytes] = {}
+        if beat_indices:
+            idx_set = set(beat_indices)
+            beats_todo = [b for b in job.script.beats if b.index in idx_set and b.image_prompt]
+            image_cache = _generate_beat_images_parallel(job, beats_todo, preset)
+
+        job.step = "reassembling video"
+        job.video_url = None
+        store.save(job)
+        audio_bytes = backend().get(job.audio_key) if byo else get_by_url(job.script.audio_url)
+        job.video_url = assemble_slideshow(
+            job.script, audio_bytes, captions=job.captions, image_cache=image_cache
         )
 
         job.retries = sum(max(0, len(b.attempts) - 1) for b in job.script.beats)
